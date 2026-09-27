@@ -1,0 +1,3 @@
+displayName = Reverie 旧梦
+author = Guida
+version = 0.1
