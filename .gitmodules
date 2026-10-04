@@ -1,0 +1,3 @@
+[submodule "GuidaSharedCode"]
+	path = GuidaSharedCode
+	url = https://github.com/GREAT-GUIDA/GuidaSharedCode
