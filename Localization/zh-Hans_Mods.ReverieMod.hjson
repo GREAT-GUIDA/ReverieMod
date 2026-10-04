@@ -1,0 +1,30 @@
+Items: {
+	KingSlimeCrown: {
+		DisplayName: "史莱姆王冠"
+		Tooltip: "召唤史莱姆王"
+	}
+	DreamEyeSummon: {
+		DisplayName: "可疑的眼球"
+		Tooltip: "召唤旧梦之眼"
+	}
+	DreamEyeBag: {
+		DisplayName: "旧梦之眼宝藏袋"
+		Tooltip: "{$CommonItemTooltip.RightClickToOpen}"
+	}
+	DreamEyeTrophy: {
+		DisplayName: "旧梦之眼纪念章"
+	}
+	DreamEyeMask: {
+		DisplayName: "旧梦之眼面具"
+	}
+	DreamEyeRelic: {
+		DisplayName: "旧梦之眼遗物"
+	}
+}
+
+NPCs: {
+	KingSlime.DisplayName: "史莱姆王"
+	DreamEye.DisplayName: "旧梦之眼"
+	EyeServant.DisplayName: "眼球仆从"
+}
+

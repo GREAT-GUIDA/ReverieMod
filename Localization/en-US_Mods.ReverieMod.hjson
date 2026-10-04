@@ -11,4 +11,32 @@ Items: {
 			It's snowing on Mt.Fuji
 			'''
 	}
+	KingSlimeCrown: {
+		DisplayName: "King Slime Crown"
+		Tooltip: "Summons King Slime"
+	}
+	DreamEyeSummon: {
+		DisplayName: "Suspicious Looking Eye"
+		Tooltip: "Summons the Dream Eye"
+	}
+	DreamEyeBag: {
+		DisplayName: "Dream Eye Treasure Bag"
+		Tooltip: "{$CommonItemTooltip.RightClickToOpen}"
+	}
+	DreamEyeTrophy: {
+		DisplayName: "Dream Eye Trophy"
+	}
+	DreamEyeMask: {
+		DisplayName: "Dream Eye Mask"
+	}
+	DreamEyeRelic: {
+		DisplayName: "Dream Eye Relic"
+	}
 }
+
+NPCs: {
+	DreamEye.DisplayName: "Dream Eye"
+	EyeServant.DisplayName: "Eye Servant"
+	KingSlime.DisplayName: "King Slime"
+}
+
