@@ -6,7 +6,7 @@ using Terraria;
 
 namespace ReverieMod.Content.Particles;
 
-public class GroundCrackParticle : Particle {
+public class GroundCrackParticle : Particle<GroundCrackParticle> {
 	// tileTarget 空地多为透明黑；用目标 RGB 做遮罩比 DestinationAlpha 更可靠。
 	private static readonly BlendState CrackByTileTargetMask = new() {
 		ColorSourceBlend = Blend.DestinationColor,

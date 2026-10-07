@@ -5,7 +5,7 @@ using Microsoft.Xna.Framework.Graphics;
 namespace ReverieMod.Content.Particles;
 
 // A reusable burst. The warning ring is deliberately absent from these layers.
-public class ExplosionEffectParticle : EffectParticle {
+public class ExplosionEffectParticle : EffectParticle<ExplosionEffectParticle> {
     protected override void SetupParticleDefaults() {
         timeLeft = maxTimeLeft = 25;
         drawLayer = ParticleLayer.BeforeProjectiles;

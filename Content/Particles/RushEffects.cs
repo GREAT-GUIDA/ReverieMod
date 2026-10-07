@@ -7,7 +7,7 @@ using Terraria.ID;
 
 namespace ReverieMod.Content.Particles;
 
-public class SpeedLineParticle : Particle {
+public class SpeedLineParticle : Particle<SpeedLineParticle> {
     public Vector2 drawScale;
     public float velocityDrag;
     public float fadeInEnd;
@@ -39,7 +39,7 @@ public class SpeedLineParticle : Particle {
     }
 }
 
-public class RushCircleParticle : Particle {
+public class RushCircleParticle : Particle<RushCircleParticle> {
     public Vector2 drawScale;
     public Vector2 growthPerTick;
     public float velocityDrag;

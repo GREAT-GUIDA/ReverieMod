@@ -86,6 +86,7 @@ public partial class KingSlime : ModNPC {
     private float appliedTempo;
     private float splitTimer;
     private float splitMergeStart = -1f;
+    private bool mergeIntoTwin;
     private bool pendingSplit;
     private int splitTwinIndex = -1;
     private float measureTicks;
@@ -186,6 +187,7 @@ public partial class KingSlime : ModNPC {
             writer.Write(splitTimer);
             writer.Write(splitMergeStart);
             writer.Write((short)splitTwinIndex);
+            writer.Write(mergeIntoTwin);
         }
         writer.Write(measureTicks);
         writer.Write(introComplete);
@@ -220,11 +222,13 @@ public partial class KingSlime : ModNPC {
             splitTimer = reader.ReadSingle();
             splitMergeStart = reader.ReadSingle();
             splitTwinIndex = reader.ReadInt16();
+            mergeIntoTwin = reader.ReadBoolean();
         }
         else {
             splitTimer = 0f;
             splitMergeStart = -1f;
             splitTwinIndex = -1;
+            mergeIntoTwin = false;
         }
         measureTicks = reader.ReadSingle();
         introComplete = reader.ReadBoolean();
@@ -594,8 +598,8 @@ public partial class KingSlime : ModNPC {
     private void UpdateBodyTwist() {
         if (NPC.IsABestiaryIconDummy) return;
         if (bodyTwistParticle == null || !bodyTwistParticle.IsAlive) {
-            bodyTwistParticle = ParticleManager.Instance.NewParticle<KingSlimeBodyTwistParticle>(
-                NPC.Bottom, Vector2.Zero);
+            bodyTwistParticle = KingSlimeBodyTwistParticle.Spawn(
+                NPC.Bottom);
             bodyTwistParticle.SetHolder(NPC);
         }
 
@@ -710,8 +714,8 @@ public partial class KingSlime : ModNPC {
         if (TryGetSplitTwin(out NPC twin) && twin.ModNPC is KingSlime echo)
             woodHost = echo;
         if (chestParticle?.IsAlive != true) {
-            chestParticle = ParticleManager.Instance.NewParticle<KingSlimePropParticle>(
-                InteriorPosition(0f), Vector2.Zero);
+            chestParticle = KingSlimePropParticle.Spawn(
+                InteriorPosition(0f));
             chestParticle.SetHolder(NPC);
         }
         chestParticle.position = InteriorPosition(0f);
@@ -722,8 +726,8 @@ public partial class KingSlime : ModNPC {
         chestParticle.timeLeft = 2;
 
         if (woodChestParticle?.IsAlive != true) {
-            woodChestParticle = ParticleManager.Instance.NewParticle<KingSlimePropParticle>(
-                woodHost.InteriorPosition(MathHelper.TwoPi / 3f), Vector2.Zero);
+            woodChestParticle = KingSlimePropParticle.Spawn(
+                woodHost.InteriorPosition(MathHelper.TwoPi / 3f));
             woodChestParticle.SetHolder(NPC);
             woodChestParticle.wooden = true;
             woodHostIndex = woodHost.NPC.whoAmI;
@@ -737,8 +741,8 @@ public partial class KingSlime : ModNPC {
         if (woodHost == this) FollowWoodChest(this);
 
         if (ninjaParticle?.IsAlive != true) {
-            ninjaParticle = ParticleManager.Instance.NewParticle<KingSlimePropParticle>(
-                InteriorPosition(MathHelper.TwoPi * 2f / 3f), Vector2.Zero);
+            ninjaParticle = KingSlimePropParticle.Spawn(
+                InteriorPosition(MathHelper.TwoPi * 2f / 3f));
             ninjaParticle.SetHolder(NPC);
             ninjaParticle.ninja = true;
         }
@@ -772,9 +776,9 @@ public partial class KingSlime : ModNPC {
         if (!dying && IsTeleporting && Timer >= TeleportMoment && !teleportOccurred) return;
         if (!dying && IsTeleporting && teleportOccurred && Timer < TeleportMoment + 4f) return;
         if (crownParticle == null || !crownParticle.IsAlive) {
-            crownParticle = ParticleManager.Instance.NewParticle<KingSlimeCrownParticle>(
+            crownParticle = KingSlimeCrownParticle.Spawn(
                 !dying && IsTeleporting && teleportOccurred
-                    ? InteriorPosition(0f) : CrownAnchor(), Vector2.Zero, scale: 0.85f);
+                    ? InteriorPosition(0f) : CrownAnchor(), scale: 0.85f);
             crownParticle.SetHolder(NPC);
         }
         if (!dying && IsTeleporting && teleportOccurred && Timer < TeleportMoment + 24f) {
@@ -1175,7 +1179,7 @@ public partial class KingSlime : ModNPC {
         float strength = MathHelper.Clamp(1f - jumpTrailTicks / 42f, 0f, 1f);
         int count = jumpTrailTicks <= 8 ? 2 : 1;
         for (int i = 0; i < count; i++) {
-            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = SmokeParticle.Spawn(
                 NPC.Bottom - NPC.velocity * 0.7f +
                 new Vector2(Main.rand.NextFloat(-NPC.width * 0.18f, NPC.width * 0.18f),
                     -NPC.height * 0.12f + Main.rand.NextFloat(-5f, 3f)),
@@ -1304,16 +1308,19 @@ public partial class KingSlime : ModNPC {
             return;
         }
 
-        // Keep the crowned body on its ordinary terrain path. The echo flows
-        // through blocks to it, so the merged boss never inherits an embedded position.
-        motionMode = MotionMode.Natural;
-        NPC.localAI[0] = 0;
         if (!TryGetSplitTwin(out NPC twin)) {
             if (Main.netMode != NetmodeID.MultiplayerClient) CompleteSplit(target);
             return;
         }
 
-        NPC.velocity.X *= 0.72f;
+        if (mergeIntoTwin)
+            MoveTowardMergePoint(new Vector2(twin.Center.X,
+                twin.Bottom.Y - NPC.height * 0.5f));
+        else {
+            motionMode = MotionMode.Natural;
+            NPC.localAI[0] = 0;
+            NPC.velocity.X *= 0.72f;
+        }
         landingCompression = Math.Max(landingCompression,
             0.13f * GuidaUtils.Smoothstep(splitMergeStart,
                 splitMergeStart + 30f, splitTimer));
@@ -1358,18 +1365,27 @@ public partial class KingSlime : ModNPC {
         ReleasePotion();
         ReleaseRope();
         ReleaseUmbrella();
-        motionMode = MotionMode.Merge;
         NPC.damage = 0;
         NPC.localAI[0] = 0;
-        Vector2 towardOwner = owner.NPC.Center - NPC.Center;
-        Vector2 desired = Vector2.Clamp(towardOwner * 0.16f,
+        if (owner.mergeIntoTwin) {
+            motionMode = MotionMode.Natural;
+            NPC.velocity.X *= 0.72f;
+        }
+        else MoveTowardMergePoint(new Vector2(owner.NPC.Center.X,
+            owner.NPC.Bottom.Y - NPC.height * 0.5f));
+        landingCompression = Math.Max(landingCompression, 0.11f);
+        MoveWithTerrain(target);
+    }
+
+    private void MoveTowardMergePoint(Vector2 destination) {
+        motionMode = MotionMode.Merge;
+        Vector2 desired = Vector2.Clamp((destination - NPC.Center) * 0.16f,
             new Vector2(-36f, -36f), new Vector2(36f, 36f));
         NPC.velocity = Vector2.Lerp(NPC.velocity, desired, 0.24f);
-        landingCompression = Math.Max(landingCompression, 0.11f);
         NPC.rotation = MathHelper.Lerp(NPC.rotation,
             MathHelper.Clamp(NPC.velocity.X * 0.012f, -0.14f, 0.14f), 0.16f);
-        if (Main.netMode != NetmodeID.Server && (int)NPC.localAI[3] % 3 == 0) {
-            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
+        if (Main.netMode != NetmodeID.Server && (int)visualTicks % 3 == 0) {
+            SmokeParticle smoke = SmokeParticle.Spawn(
                 NPC.Center + Main.rand.NextVector2Circular(NPC.width * 0.3f, NPC.height * 0.25f),
                 -NPC.velocity * 0.12f + Main.rand.NextVector2Circular(0.5f, 0.5f),
                 alpha: 0f, scale: NPC.scale * Main.rand.NextFloat(0.8f, 1.2f));
@@ -1378,7 +1394,6 @@ public partial class KingSlime : ModNPC {
             smoke.timeLeft = 20;
             smoke.maxTimeLeft = 20;
         }
-        MoveWithTerrain(target);
     }
 
     private bool TryGetSplitTwin(out NPC twin) {
@@ -1401,6 +1416,11 @@ public partial class KingSlime : ModNPC {
     }
 
     private void CompleteSplit(Player target) {
+        if (mergeIntoTwin && TryGetSplitTwin(out NPC mergeTarget)) {
+            NPC.Center = new Vector2(mergeTarget.Center.X,
+                mergeTarget.Bottom.Y - NPC.height * 0.5f);
+            NPC.velocity = mergeTarget.velocity;
+        }
         if (Main.netMode != NetmodeID.MultiplayerClient) RemoveSplitTwin();
         else {
             if (TryGetSplitTwin(out NPC twin)) twin.active = false;
@@ -1413,6 +1433,7 @@ public partial class KingSlime : ModNPC {
         }
         splitTimer = 0;
         splitMergeStart = -1f;
+        mergeIntoTwin = false;
         tempoStage = 1;
         NPC.defense = 12;
         NPC.velocity *= 0.35f;
@@ -1799,8 +1820,8 @@ public partial class KingSlime : ModNPC {
             return;
         }
         if (ropeParticle == null || !ropeParticle.IsAlive) {
-            ropeParticle = ParticleManager.Instance.NewParticle<KingSlimeRopeParticle>(
-                ropeLaunchPosition, Vector2.Zero, alpha: 0f, scale: 1.8f);
+            ropeParticle = KingSlimeRopeParticle.Spawn(
+                ropeLaunchPosition, alpha: 0f, scale: 1.8f);
             ropeParticle.SetHolder(NPC);
             ropeParticle.launchPosition = ropeLaunchPosition;
         }
@@ -1832,8 +1853,8 @@ public partial class KingSlime : ModNPC {
         }
 
         if (potionParticle == null || !potionParticle.IsAlive) {
-            potionParticle = ParticleManager.Instance.NewParticle<KingSlimePotionParticle>(
-                NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
+            potionParticle = KingSlimePotionParticle.Spawn(
+                NPC.Center, alpha: 0f, scale: 2.5f);
             potionParticle.SetHolder(NPC);
             potionParticle.variant = phasePotions ? (int)(Timer / 30f) + 1 : 0;
         }
@@ -1874,8 +1895,8 @@ public partial class KingSlime : ModNPC {
         }
 
         if (grappleParticle == null || !grappleParticle.IsAlive) {
-            grappleParticle = ParticleManager.Instance.NewParticle<KingSlimeGrappleParticle>(
-                NPC.Top, Vector2.Zero, alpha: 0f, scale: 2.5f);
+            grappleParticle = KingSlimeGrappleParticle.Spawn(
+                NPC.Top, alpha: 0f, scale: 2.5f);
             grappleParticle.SetHolder(NPC);
             grappleParticle.launchPosition = NPC.Top + new Vector2(0f, 7f);
         }
@@ -1909,31 +1930,31 @@ public partial class KingSlime : ModNPC {
             UpdateUltimateSpearVisuals();
             return;
         }
-        if (CurrentMove == Move.TeleportSpearRush) {
-            if (previousTimer < 112f) UpdateTeleportSpearVisuals();
-            else ReleaseSpear();
-            return;
-        }
-        if (CurrentMove != Move.SpearRush || Timer >= 112) {
+        bool teleportRush = CurrentMove == Move.TeleportSpearRush;
+        if ((!teleportRush && CurrentMove != Move.SpearRush) ||
+            (teleportRush ? previousTimer >= 112f : Timer >= 112f)) {
             ReleaseSpear();
             return;
         }
 
         if (spearParticle == null || !spearParticle.IsAlive) {
-            spearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(NPC.Center, Vector2.Zero,
+            spearParticle = KingSlimeSpearParticle.Spawn(NPC.Center,
                 alpha: 0f, scale: 2.5f);
             spearParticle.SetHolder(NPC);
         }
 
         float aimAngle = MoveValue;
-        if (Timer < 42) {
+        if (teleportRush)
+            aimAngle += MathHelper.TwoPi *
+                (1f - GuidaUtils.Smoothstep(8f, 42f, Timer));
+        else if (Timer < 42) {
             float aimDirection = (target.Center - NPC.Center).ToRotation();
             if (Timer >= 32)
                 aimDirection += MathHelper.WrapAngle(MoveValue - aimDirection) *
                     GuidaUtils.Smoothstep(32f, 42f, Timer);
             aimAngle = aimDirection + MathHelper.TwoPi * GuidaUtils.Smoothstep(8f, 42f, Timer);
         }
-        if (Timer >= 78 && NPC.velocity.LengthSquared() > 1f)
+        if (!teleportRush && Timer >= 78 && NPC.velocity.LengthSquared() > 1f)
             aimAngle = NPC.velocity.ToRotation();
         Vector2 direction = new Vector2((float)Math.Cos(aimAngle), (float)Math.Sin(aimAngle));
         float pullBack = 30f * GuidaUtils.Smoothstep(42f, 70f, Timer) *
@@ -1946,19 +1967,21 @@ public partial class KingSlime : ModNPC {
         spearParticle.tipStarRotation = MathHelper.TwoPi * 1.25f *
             GuidaUtils.Smoothstep(32f, 78f, Timer);
         spearParticle.tipRushStreak = Timer >= 78;
+        spearParticle.timeLeft = 2;
 
-        if (Timer >= 32 && Timer < 78 && !spearWarningCreated) {
-            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
-                NPC.Center - MoveValue.ToRotationVector2() * 24f, Vector2.Zero);
+        if (Timer >= (teleportRush ? 8f : 32f) && Timer < 78f &&
+            !spearWarningCreated) {
+            WarningLineParticle.Spawn(teleportRush ? teleportDestination :
+                    NPC.Center - MoveValue.ToRotationVector2() * 24f,
+                MoveValue + MathHelper.PiOver2,
+                teleportRush ? teleportRushDistance : 780f * spearRushDistanceScale,
+                ((teleportRush ? 78f : 87f) - Timer) / appliedTempo,
+                width: 96f * NPC.scale,
+                opacity: 0.8f, arrowSpeed: appliedTempo);
             spearWarningCreated = true;
-            warning.lineLength = 780f * spearRushDistanceScale;
-            StyleBodyWarning(warning);
-            warning.time = Math.Max(1f, (87f - Timer) / appliedTempo);
-            warning.arrowSpeed = appliedTempo;
-            warning.lineRotation = MoveValue + MathHelper.PiOver2;
         }
 
-        if (Timer >= 78) {
+        if (Timer >= 78f && (!teleportRush || previousTimer < 112f)) {
             UpdateBodyMotionTrail();
             UpdateSpearTipTrail();
             SpawnSpearRushEffects(new Vector2((float)Math.Cos(MoveValue), (float)Math.Sin(MoveValue)),
@@ -1970,7 +1993,7 @@ public partial class KingSlime : ModNPC {
         Vector2 sideways = new Vector2(-direction.Y, direction.X);
 
         if (openingCircle || secondCircle) {
-            RushCircleParticle circle = ParticleManager.Instance.NewParticle<RushCircleParticle>(
+            RushCircleParticle circle = RushCircleParticle.Spawn(
                 NPC.Center - direction * (NPC.width * (openingCircle ? 0.28f : 0.14f)),
                 direction * (openingCircle ? 3.8f : 2.4f),
                 alpha: openingCircle ? 0.7f : 0.48f);
@@ -1988,7 +2011,7 @@ public partial class KingSlime : ModNPC {
         if ((int)Timer % 4 == 0) return;
         Vector2 spawnPosition = NPC.Center - direction * Main.rand.NextFloat(4f, NPC.width * 0.65f) +
             sideways * Main.rand.NextFloat(-NPC.height * 0.65f, NPC.height * 0.65f);
-        SpeedLineParticle line = ParticleManager.Instance.NewParticle<SpeedLineParticle>(
+        SpeedLineParticle line = SpeedLineParticle.Spawn(
             spawnPosition, -direction * Main.rand.NextFloat(2f, 5f),
             alpha: Main.rand.NextFloat(0.30f, 0.46f));
         line.color = new Color(155, 210, 255);
@@ -2004,8 +2027,7 @@ public partial class KingSlime : ModNPC {
 
     private void UpdateSpearTipTrail() {
         if (spearTipTrail == null || !spearTipTrail.IsAlive) {
-            spearTipTrail = ParticleManager.Instance.NewParticle<TrailParticle>(spearParticle.TipPosition,
-                Vector2.Zero);
+            spearTipTrail = TrailParticle.Spawn(spearParticle.TipPosition);
             Texture2D glow = spearParticle.RushStreakTexture;
             // Give the sampled glows visible alpha; an alpha-zero tint makes
             // this trail nearly disappear after its per-sample fade.
@@ -2031,8 +2053,7 @@ public partial class KingSlime : ModNPC {
         bool whiteAfterimage = false) {
         Vector2 bottom = NPC.Bottom + new Vector2(0f, NPC.gfxOffY + 4f);
         if (newSegment || trail?.IsAlive != true) {
-            trail = ParticleManager.Instance.NewParticle<TrailParticle>(bottom,
-                Vector2.Zero);
+            trail = TrailParticle.Spawn(bottom);
             Texture2D body = ModAsset.KingSlimeBody.Value;
             trail.SetUp(10, body, new Rectangle(0, 240, 174, 120),
                 BlendState.AlphaBlend, whiteAfterimage ? 0.52f : 0.44f);
@@ -2106,7 +2127,7 @@ public partial class KingSlime : ModNPC {
         // Two larger puffs travel outward from either side of the body.
         for (int direction = -1; direction <= 1; direction += 2) {
             for (int i = 0; i < 2; i++) {
-                SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
+                SmokeParticle smoke = SmokeParticle.Spawn(
                     NPC.Bottom + new Vector2(direction * (NPC.width * 0.48f + i * 9f), -12f - i * 3f),
                     new Vector2(direction * (heavy ? 5.2f : 4.2f) * (i == 0 ? 1f : 0.72f),
                         i == 0 ? -0.85f : -1.65f),
@@ -2124,7 +2145,7 @@ public partial class KingSlime : ModNPC {
         int count = heavy ? 11 : 9;
         for (int i = 0; i < count; i++) {
             float offsetX = Main.rand.NextFloat(-NPC.width * 0.70f, NPC.width * 0.70f);
-            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = SmokeParticle.Spawn(
                 NPC.Bottom + new Vector2(offsetX, Main.rand.NextFloat(-4f, 0f)),
                 new Vector2(offsetX / NPC.width * (heavy ? 2.2f : 1.6f),
                     -Main.rand.NextFloat(0.5f, heavy ? 1.5f : 1.1f)),

@@ -73,7 +73,7 @@ public partial class EyeOfCthulhu {
         flash *= 0.9f;
         Lighting.AddLight(NPC.Center, Phase > 0 ? 0.8f : 0.35f, 0.06f, Phase > 0 ? 0.12f : 0.3f);
         if (NPC.velocity.LengthSquared() > 200f && Main.rand.NextBool(2)) {
-            GlowStreakParticle streak = ParticleManager.Instance.NewParticle<GlowStreakParticle>(
+            GlowStreakParticle streak = GlowStreakParticle.Spawn(
                 NPC.Center + Main.rand.NextVector2Circular(35f, 35f), -NPC.velocity * 0.1f);
             streak.color = EyeDraw.Crimson;
             streak.drawSize = new Vector2(5f, 36f);
@@ -89,7 +89,7 @@ public partial class EyeOfCthulhu {
 
     internal static void Pulse(Vector2 center, float size) {
         if (Main.netMode == NetmodeID.Server) return;
-        CthulhuPulseParticle pulse = ParticleManager.Instance.NewParticle<CthulhuPulseParticle>(center, Vector2.Zero, scale: size);
+        CthulhuPulseParticle pulse = CthulhuPulseParticle.Spawn(center, scale: size);
         pulse.color = EyeDraw.Crimson;
     }
 
@@ -167,7 +167,7 @@ public partial class EyeOfCthulhu {
     }
 }
 
-public class CthulhuPulseParticle : EffectParticle {
+public class CthulhuPulseParticle : EffectParticle<CthulhuPulseParticle> {
     protected override void SetupParticleDefaults() {
         timeLeft = maxTimeLeft = 30;
         drawLayer = ParticleLayer.BeforeNPCs;

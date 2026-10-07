@@ -5,7 +5,7 @@ using Microsoft.Xna.Framework.Graphics;
 namespace ReverieMod.Content.Particles;
 
 // Two expanding pressure rings and a short flash for a large creature's roar.
-public class RoarEffectParticle : EffectParticle {
+public class RoarEffectParticle : EffectParticle<RoarEffectParticle> {
     protected override void SetupParticleDefaults() {
         timeLeft = maxTimeLeft = 34;
         drawLayer = ParticleLayer.BeforeProjectiles;
@@ -50,7 +50,7 @@ public class RoarEffectParticle : EffectParticle {
     }
 }
 
-public class RoarLineEffectParticle : EffectParticle {
+public class RoarLineEffectParticle : EffectParticle<RoarLineEffectParticle> {
     protected override void SetupParticleDefaults() {
         timeLeft = maxTimeLeft = 36;
         drawLayer = ParticleLayer.BeforeProjectiles;
@@ -68,7 +68,7 @@ public class RoarLineEffectParticle : EffectParticle {
 }
 
 // A bright ring collapses into its center as energy is absorbed.
-public class AbsorptionEffectParticle : EffectParticle {
+public class AbsorptionEffectParticle : EffectParticle<AbsorptionEffectParticle> {
     protected override void SetupParticleDefaults() {
         timeLeft = maxTimeLeft = 26;
         drawLayer = ParticleLayer.BeforeNPCs;

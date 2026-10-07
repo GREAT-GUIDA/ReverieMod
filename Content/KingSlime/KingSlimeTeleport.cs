@@ -95,8 +95,8 @@ public partial class KingSlime {
     }
 
     private void CreateTeleportWarning(Vector2 destination, float musicalTicks) {
-        TeleportWarningParticle warning = ParticleManager.Instance.NewParticle<TeleportWarningParticle>(
-            destination + Vector2.UnitY * NPC.height * 0.5f, Vector2.Zero);
+        TeleportWarningParticle warning = TeleportWarningParticle.Spawn(
+            destination + Vector2.UnitY * NPC.height * 0.5f);
         warning.width = NPC.width;
         warning.height = NPC.height;
         warning.beatPhase = measureTicks % 22.5f;
@@ -192,8 +192,8 @@ public partial class KingSlime {
 
     private void UpdateQueuedSpear() {
         if (queuedSpearParticle?.IsAlive != true) {
-            queuedSpearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(
-                NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
+            queuedSpearParticle = KingSlimeSpearParticle.Spawn(
+                NPC.Center, alpha: 0f, scale: 2.5f);
             queuedSpearParticle.SetHolder(NPC);
         }
         float turn = GuidaUtils.Smoothstep(95f, 131f, actionElapsed);
@@ -225,23 +225,18 @@ public partial class KingSlime {
         float teleportMoment = teleportChainMove == Move.TeleportSpearRush ? 54f : 48f;
         CreateTeleportWarning(teleportChainDestination, remaining + teleportMoment - 45f);
         if (teleportChainMove == Move.TeleportSpearRush) {
-            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
-                teleportChainDestination, Vector2.Zero);
-            warning.lineLength = teleportChainRushDistance;
-            warning.lineRotation = teleportChainDirection + MathHelper.PiOver2;
-            StyleBodyWarning(warning);
-            warning.time = Math.Max(1f, (remaining + 78f - 45f) / appliedTempo);
-            warning.arrowSpeed = appliedTempo;
+            WarningLineParticle.Spawn(teleportChainDestination,
+                teleportChainDirection + MathHelper.PiOver2,
+                teleportChainRushDistance, (remaining + 78f - 45f) / appliedTempo,
+                width: 96f * NPC.scale, opacity: 0.8f, arrowSpeed: appliedTempo);
         }
         else if (teleportChainMove == Move.TeleportHammerSlam) {
-            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
-                teleportChainDestination + Vector2.UnitY * NPC.height * 0.5f, Vector2.Zero);
-            warning.lineRotation = MathHelper.Pi;
-            warning.lineLength = MathHelper.Clamp(target.Bottom.Y - teleportChainDestination.Y -
-                NPC.height * 0.5f + 112f, 180f, 880f);
-            StyleVerticalBodyWarning(warning);
-            warning.time = Math.Max(1f, (remaining + 81f - 45f) / appliedTempo);
-            warning.arrowSpeed = appliedTempo;
+            WarningLineParticle.Spawn(
+                teleportChainDestination + Vector2.UnitY * NPC.height * 0.5f,
+                MathHelper.Pi, MathHelper.Clamp(target.Bottom.Y - teleportChainDestination.Y -
+                    NPC.height * 0.5f + 112f, 180f, 880f),
+                (remaining + 81f - 45f) / appliedTempo,
+                width: 136f * NPC.scale, opacity: 0.8f, arrowSpeed: appliedTempo);
         }
     }
 
@@ -542,56 +537,14 @@ public partial class KingSlime {
         if (SlotFinished(135f) && grounded) AdvancePattern(target);
     }
 
-    private void UpdateTeleportSpearVisuals() {
-        if (spearParticle?.IsAlive != true) {
-            spearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(
-                NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-            spearParticle.SetHolder(NPC);
-        }
-        float turn = GuidaUtils.Smoothstep(8f, 42f, Timer);
-        float angle = MoveValue + MathHelper.TwoPi * (1f - turn);
-        Vector2 direction = new((float)Math.Cos(angle), (float)Math.Sin(angle));
-        float pullBack = 30f * GuidaUtils.Smoothstep(42f, 70f, Timer) *
-            GuidaUtils.Smoothstep(84f, 78f, Timer);
-        spearParticle.position = NPC.Center + direction *
-            (NPC.width * 0.42f + 8f - pullBack) - Vector2.UnitY * NPC.height * 0.09f;
-        spearParticle.rotation = angle + MathHelper.PiOver4;
-        spearParticle.alpha = GuidaUtils.Smoothstep(4f, 20f, Timer);
-        spearParticle.tipStarOpacity = GuidaUtils.Smoothstep(32f, 52f, Timer);
-        spearParticle.tipStarRotation = MathHelper.TwoPi * 1.25f *
-            GuidaUtils.Smoothstep(32f, 78f, Timer);
-        spearParticle.tipRushStreak = Timer >= 78f;
-        spearParticle.timeLeft = 2;
-
-        if (Timer >= 8f && Timer < 78f && !spearWarningCreated) {
-            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
-                teleportDestination, Vector2.Zero);
-            spearWarningCreated = true;
-            warning.lineLength = teleportRushDistance;
-            StyleBodyWarning(warning);
-            warning.time = Math.Max(1f, (78f - Timer) / appliedTempo);
-            warning.arrowSpeed = appliedTempo;
-            warning.lineRotation = MoveValue + MathHelper.PiOver2;
-        }
-        if (Timer >= 78f && previousTimer < 112f) {
-            UpdateBodyMotionTrail();
-            UpdateSpearTipTrail();
-            SpawnSpearRushEffects(new Vector2((float)Math.Cos(MoveValue),
-                (float)Math.Sin(MoveValue)), PassedTime(78f), PassedTime(92f));
-        }
-    }
-
     private void ShowTeleportHammerWarning(Player target) {
         if (Timer < 10f || Timer >= 81f || teleportHammerWarningCreated ||
             Main.netMode == NetmodeID.Server) return;
-        WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
-            teleportDestination + Vector2.UnitY * NPC.height * 0.5f, Vector2.Zero);
+        WarningLineParticle.Spawn(teleportDestination + Vector2.UnitY * NPC.height * 0.5f,
+            MathHelper.Pi, MathHelper.Clamp(target.Bottom.Y - teleportDestination.Y -
+                NPC.height * 0.5f + 112f, 180f, 880f),
+            (81f - Timer) / appliedTempo, width: 136f * NPC.scale,
+            opacity: 0.8f, arrowSpeed: appliedTempo);
         teleportHammerWarningCreated = true;
-        warning.lineRotation = MathHelper.Pi;
-        warning.lineLength = MathHelper.Clamp(target.Bottom.Y - teleportDestination.Y -
-            NPC.height * 0.5f + 112f, 180f, 880f);
-        StyleVerticalBodyWarning(warning);
-        warning.time = Math.Max(1f, (81f - Timer) / appliedTempo);
-        warning.arrowSpeed = appliedTempo;
     }
 }

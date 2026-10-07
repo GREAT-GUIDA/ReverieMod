@@ -7,7 +7,7 @@ using Terraria;
 namespace ReverieMod.Content.Particles;
 
 // An ArrowLine telegraph that can be aimed and timed by any attack.
-public class WarningLineParticle : Particle {
+public class WarningLineParticle : Particle<WarningLineParticle> {
     public float lineLength = 400f;
     public float lineWidth = 100f;
     public float lineRotation = 10f;
@@ -16,6 +16,21 @@ public class WarningLineParticle : Particle {
     public float curve;
     public bool smaller;
     public float arrowSpeed = 1f;
+
+    public new static WarningLineParticle Spawn(Vector2 position, float rotation,
+        float length, float duration, float width = 100f, float opacity = 1f,
+        Color? color = null, bool smaller = false, float arrowSpeed = 1f) {
+        WarningLineParticle line = Particle.Spawn<WarningLineParticle>(position);
+        line.lineRotation = rotation;
+        line.lineLength = length;
+        line.time = Math.Max(1f, duration);
+        line.lineWidth = width;
+        line.alpha = opacity;
+        if (color.HasValue) line.color = color.Value;
+        line.smaller = smaller;
+        line.arrowSpeed = arrowSpeed;
+        return line;
+    }
 
     public override void SetDefaults() {
         base.SetDefaults();

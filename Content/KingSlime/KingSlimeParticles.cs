@@ -8,7 +8,7 @@ using Terraria.ID;
 
 namespace ReverieMod.Content.KingSlime;
 
-public class KingSlimeBodyTwistParticle : Particle, ITwistParticle {
+public class KingSlimeBodyTwistParticle : Particle<KingSlimeBodyTwistParticle>, ITwistParticle {
     public Vector2 bodyScale;
     public float opacity;
 
@@ -37,7 +37,7 @@ public class KingSlimeBodyTwistParticle : Particle, ITwistParticle {
 
 
 // The boss places and sustains its simple props; chests alone animate open.
-public class KingSlimePropParticle : Particle {
+public class KingSlimePropParticle : Particle<KingSlimePropParticle> {
     public bool wooden;
     public bool ninja;
     public bool open;
@@ -74,7 +74,8 @@ public class KingSlimePropParticle : Particle {
 
 
 // Shared release, ground sweep, two rebounds, and fade for discarded items.
-public abstract class KingSlimeDroppedItemParticle : Particle {
+public abstract class KingSlimeDroppedItemParticle<TSelf> : Particle<TSelf>
+    where TSelf : Particle, new() {
     private int bounceCount;
 
     protected abstract Vector2 GroundContactPoint { get; }
@@ -135,27 +136,27 @@ public abstract class KingSlimeDroppedItemParticle : Particle {
     }
 }
 
-
-// The discarded shortsword bounces twice, then falls through terrain.
-public class KingSlimeCopperShortswordParticle : KingSlimeDroppedItemParticle {
+public abstract class KingSlimeHeldItemParticle<TSelf> : KingSlimeDroppedItemParticle<TSelf>
+    where TSelf : Particle, new() {
     public bool held = true;
 
-    public override Texture2D Texture => ModAsset.KingSlimeCopperShortsword.Value;
-    protected override Vector2 GroundContactPoint =>
-        RotatedLowerEnd(16f * scale, rotation);
+    protected virtual float DropSpin(Vector2 throwVelocity) =>
+        throwVelocity.X >= 0f ? 0.09f : -0.09f;
 
-    public override void SetDefaults() {
-        base.SetDefaults();
-        width = height = 12;
-        timeLeft = 2;
-        drawLayer = ParticleLayer.BeforeProjectiles;
-        useLighting = true;
-    }
+    protected virtual void OnRelease() { }
 
     public void Release(Vector2 throwVelocity) {
         if (!held) return;
         held = false;
-        BeginDrop(throwVelocity, throwVelocity.X >= 0f ? 0.11f : -0.11f);
+        OnRelease();
+        BeginDrop(throwVelocity, DropSpin(throwVelocity));
+    }
+
+    public override void SetDefaults() {
+        base.SetDefaults();
+        timeLeft = 2;
+        drawLayer = ParticleLayer.BeforeProjectiles;
+        useLighting = true;
     }
 
     public override void AI() {
@@ -166,14 +167,30 @@ public class KingSlimeCopperShortswordParticle : KingSlimeDroppedItemParticle {
             }
             Release(new Vector2(0f, -2f));
         }
-
         UpdateDrop();
     }
 }
 
 
+// The discarded shortsword bounces twice, then falls through terrain.
+public class KingSlimeCopperShortswordParticle : KingSlimeHeldItemParticle<KingSlimeCopperShortswordParticle> {
+
+    public override Texture2D Texture => ModAsset.KingSlimeCopperShortsword.Value;
+    protected override Vector2 GroundContactPoint =>
+        RotatedLowerEnd(16f * scale, rotation);
+
+    public override void SetDefaults() {
+        base.SetDefaults();
+        width = height = 12;
+    }
+
+    protected override float DropSpin(Vector2 throwVelocity) =>
+        throwVelocity.X >= 0f ? 0.11f : -0.11f;
+}
+
+
 // The crown follows the boss with an asymmetric spring and bounces twice when released.
-public class KingSlimeCrownParticle : KingSlimeDroppedItemParticle {
+public class KingSlimeCrownParticle : KingSlimeDroppedItemParticle<KingSlimeCrownParticle> {
     private Vector2 previousAnchor;
     private bool initialized;
     private bool released;
@@ -276,7 +293,7 @@ public class KingSlimeCrownParticle : KingSlimeDroppedItemParticle {
 
 
 // The grapple fades naturally after the boss stops maintaining it.
-public class KingSlimeGrappleParticle : Particle {
+public class KingSlimeGrappleParticle : Particle<KingSlimeGrappleParticle> {
     public Vector2 launchPosition;
     public Vector2 chainEnd;
     public float slack;
@@ -341,10 +358,9 @@ public class KingSlimeGrappleParticle : Particle {
 
 
 // The hammer handle stretches to its head; the released hammer tumbles as one particle.
-public class KingSlimeHammerParticle : KingSlimeDroppedItemParticle {
+public class KingSlimeHammerParticle : KingSlimeHeldItemParticle<KingSlimeHammerParticle> {
     private Vector2 looseHandleOffset;
 
-    public bool held = true;
     public Vector2 grip;
     public float headRotation;
     public float starOpacity;
@@ -357,29 +373,12 @@ public class KingSlimeHammerParticle : KingSlimeDroppedItemParticle {
     public override void SetDefaults() {
         base.SetDefaults();
         width = height = 16;
-        timeLeft = 2;
         drawLayer = ParticleLayer.BeforePlayers;
-        useLighting = true;
     }
 
-    public void Release(Vector2 throwVelocity) {
-        if (!held) return;
-        held = false;
+    protected override void OnRelease() {
         looseHandleOffset = grip - position;
         starOpacity = 0f;
-        BeginDrop(throwVelocity, throwVelocity.X >= 0f ? 0.09f : -0.09f);
-    }
-
-    public override void AI() {
-        if (held) {
-            if (HasValidHolder()) {
-                timeLeft = 2;
-                return;
-            }
-            Release(new Vector2(0f, -2f));
-        }
-
-        UpdateDrop();
     }
 
     protected override void RotateDropped() {
@@ -418,8 +417,7 @@ public class KingSlimeHammerParticle : KingSlimeDroppedItemParticle {
 
 
 // The discarded potion falls through terrain and fades after two bounces.
-public class KingSlimePotionParticle : KingSlimeDroppedItemParticle {
-    public bool held = true;
+public class KingSlimePotionParticle : KingSlimeHeldItemParticle<KingSlimePotionParticle> {
     public bool empty;
     public int variant;
 
@@ -443,36 +441,17 @@ public class KingSlimePotionParticle : KingSlimeDroppedItemParticle {
         base.SetDefaults();
         width = 12;
         height = 12;
-        timeLeft = 2;
-        drawLayer = ParticleLayer.BeforeProjectiles;
-        useLighting = true;
     }
 
-    public void Release(Vector2 throwVelocity) {
-        if (!held) return;
-        held = false;
-        empty = true;
-        BeginDrop(throwVelocity, Math.Sign(throwVelocity.X) * 0.11f);
-    }
-
-    public override void AI() {
-        if (held) {
-            if (!HasValidHolder())
-                Release(new Vector2(0f, -2f));
-            else {
-                timeLeft = 2;
-                return;
-            }
-        }
-
-        UpdateDrop();
-    }
+    protected override void OnRelease() => empty = true;
+    protected override float DropSpin(Vector2 throwVelocity) =>
+        Math.Sign(throwVelocity.X) * 0.11f;
 }
 
 
 // KingSlimeRope.png has the tip on top and the repeating section below.
 // When released, the rope retracts and fades without further boss updates.
-public class KingSlimeRopeParticle : Particle {
+public class KingSlimeRopeParticle : Particle<KingSlimeRopeParticle> {
     public Vector2 launchPosition;
     public Vector2 lowerEnd;
     private bool released;
@@ -537,8 +516,7 @@ public class KingSlimeRopeParticle : Particle {
 
 
 // The released spear tumbles, bounces twice, then falls through terrain.
-public class KingSlimeSpearParticle : KingSlimeDroppedItemParticle {
-    public bool held = true;
+public class KingSlimeSpearParticle : KingSlimeHeldItemParticle<KingSlimeSpearParticle> {
     public float tipStarOpacity;
     public float tipStarRotation;
     public bool tipRushStreak;
@@ -560,29 +538,6 @@ public class KingSlimeSpearParticle : KingSlimeDroppedItemParticle {
         base.SetDefaults();
         width = 10;
         height = 10;
-        timeLeft = 2;
-        drawLayer = ParticleLayer.BeforeProjectiles;
-        useLighting = true;
-    }
-
-    public void Release(Vector2 throwVelocity) {
-        if (!held) return;
-        held = false;
-        BeginDrop(throwVelocity, (throwVelocity.X >= 0f ? 1f : -1f) * 0.09f);
-    }
-
-    public override void AI() {
-        if (held) {
-            if (!HasValidHolder()) {
-                Release(new Vector2(0f, -2f));
-            }
-            else {
-                timeLeft = 2;
-                return;
-            }
-        }
-
-        UpdateDrop();
     }
 
     public override void PostDraw(SpriteBatch spriteBatch, Color lightColor) {
@@ -613,9 +568,8 @@ public class KingSlimeSpearParticle : KingSlimeDroppedItemParticle {
 
 
 // Both wands are held by the boss, then make two small bounces on full blocks.
-public class KingSlimeStaffParticle : KingSlimeDroppedItemParticle {
+public class KingSlimeStaffParticle : KingSlimeHeldItemParticle<KingSlimeStaffParticle> {
     public bool summoning;
-    public bool held = true;
 
     public override Texture2D Texture => summoning
         ? ModAsset.KingSlimeStaff.Value : ModAsset.KingSlimeFireWand.Value;
@@ -629,34 +583,12 @@ public class KingSlimeStaffParticle : KingSlimeDroppedItemParticle {
     public override void SetDefaults() {
         base.SetDefaults();
         width = height = 12;
-        timeLeft = 2;
-        drawLayer = ParticleLayer.BeforeProjectiles;
-        useLighting = true;
-    }
-
-    public void Release(Vector2 throwVelocity) {
-        if (!held) return;
-        held = false;
-        BeginDrop(throwVelocity, throwVelocity.X >= 0f ? 0.09f : -0.09f);
-    }
-
-    public override void AI() {
-        if (held) {
-            if (HasValidHolder()) {
-                timeLeft = 2;
-                return;
-            }
-            Release(new Vector2(0f, -2f));
-        }
-
-        UpdateDrop();
     }
 }
 
 
 // The released umbrella bounces twice on a full block, then falls through terrain.
-public class KingSlimeUmbrellaParticle : KingSlimeDroppedItemParticle {
-    public bool held = true;
+public class KingSlimeUmbrellaParticle : KingSlimeHeldItemParticle<KingSlimeUmbrellaParticle> {
     public float flutter;
 
     public override Texture2D Texture => ModAsset.KingSlimeUmbrella.Value;
@@ -670,31 +602,16 @@ public class KingSlimeUmbrellaParticle : KingSlimeDroppedItemParticle {
         base.SetDefaults();
         width = 12;
         height = 12;
-        timeLeft = 2;
         frame = 2;
-        drawLayer = ParticleLayer.BeforeProjectiles;
-        useLighting = true;
     }
 
-    public void Release(Vector2 throwVelocity) {
-        if (!held) return;
-        held = false;
+    protected override void OnRelease() {
         frame = 2;
         flutter = 0f;
-        BeginDrop(throwVelocity, (throwVelocity.X >= 0f ? 1f : -1f) * 0.10f);
     }
 
-    public override void AI() {
-        if (held) {
-            if (HasValidHolder()) {
-                timeLeft = 2;
-                return;
-            }
-            Release(new Vector2(0f, -2f));
-        }
-
-        UpdateDrop();
-    }
+    protected override float DropSpin(Vector2 throwVelocity) =>
+        throwVelocity.X >= 0f ? 0.10f : -0.10f;
 
     public override void Draw(SpriteBatch spriteBatch, Color lightColor) {
         Vector2 drawScale = new(scale * (1f + flutter), scale * (1f - flutter * 0.35f));
@@ -706,7 +623,7 @@ public class KingSlimeUmbrellaParticle : KingSlimeDroppedItemParticle {
 
 // The ring keeps the irregular silhouette of the source texture. Several
 // offset, rotating instances make the final burst feel like liquid, not a flash.
-public class KingSlimeGelSplashParticle : Particle {
+public class KingSlimeGelSplashParticle : Particle<KingSlimeGelSplashParticle> {
     public float growth = 0.025f;
     public float opacity = 0.72f;
 

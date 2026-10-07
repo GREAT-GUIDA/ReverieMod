@@ -19,10 +19,17 @@ public abstract class TitleScreenEffectParticle : EffectParticle {
             Matrix.Invert(Main.GameViewMatrix.TransformationMatrix));
 }
 
+public abstract class TitleScreenEffectParticle<TSelf> : TitleScreenEffectParticle
+    where TSelf : Particle, new() {
+    public new static TSelf Spawn(Vector2 position, Vector2 velocity = default,
+        int type = 0, float alpha = 1f, float scale = 1f) =>
+        Particle.Spawn<TSelf>(position, velocity, type, alpha, scale);
+}
+
 // A screen-space burst over the title as it dissolves. The separated colored
 // rings are intentionally slightly different in radius and phase: their edges
 // split into a spectrum while the overlapping center stays pale.
-public class TitleFadeEffectParticle : TitleScreenEffectParticle {
+public class TitleFadeEffectParticle : TitleScreenEffectParticle<TitleFadeEffectParticle> {
     public Color tint = Color.White;
 
     protected override void SetupParticleDefaults() {
@@ -77,7 +84,7 @@ public class TitleFadeEffectParticle : TitleScreenEffectParticle {
 }
 
 // Short moving glints, based on InventoryVisualTweaks' world-item star pulse.
-public class TitleBlinkParticle : TitleScreenEffectParticle {
+public class TitleBlinkParticle : TitleScreenEffectParticle<TitleBlinkParticle> {
     public Color tint = Color.White;
     public float size = 1f;
 

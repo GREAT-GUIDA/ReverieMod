@@ -26,17 +26,6 @@ public partial class KingSlime {
         }
     }
 
-    private void StyleBodyWarning(WarningLineParticle line) {
-        line.lineWidth = 96f * NPC.scale;
-        line.alpha = 0.8f;
-        line.color = new Color(105, 185, 255);
-    }
-
-    private void StyleVerticalBodyWarning(WarningLineParticle line) {
-        StyleBodyWarning(line);
-        line.lineWidth = 136f * NPC.scale;
-    }
-
     // The boss itself enters for one measure, roars for one measure, then the
     // first phase starts exactly on the next whole-measure boundary.
     private void UpdateIntroTimeline(Player target) {
@@ -66,12 +55,9 @@ public partial class KingSlime {
                 introWarningCreated = true;
                 Vector2 warningStart = new(NPC.Center.X,
                     Math.Max(160f, target.Top.Y - 760f) + NPC.height * 0.5f);
-                WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
-                    warningStart, Vector2.Zero);
-                warning.lineRotation = MathHelper.Pi;
-                warning.lineLength = Math.Max(200f, target.Bottom.Y - warningStart.Y);
-                StyleVerticalBodyWarning(warning);
-                warning.time = 82f;
+                WarningLineParticle.Spawn(warningStart, MathHelper.Pi,
+                    Math.Max(200f, target.Bottom.Y - warningStart.Y), 82f,
+                    width: 136f * NPC.scale, opacity: 0.8f);
             }
             // Give the landing column a visible lead before the boss starts falling.
             if (Timer < 8f) {
@@ -122,8 +108,8 @@ public partial class KingSlime {
                 Language.GetTextValue("Mods.ReverieMod.KingSlimeTitles.Intro"),
                 new Color(106, 207, 255));
         if (PassedTime(102f) || PassedTime(120f) || PassedTime(138f))
-            ParticleManager.Instance.NewParticle<RoarEffectParticle>(
-                NPC.Center, Vector2.Zero, scale: NPC.scale);
+            RoarEffectParticle.Spawn(
+                NPC.Center, scale: NPC.scale);
         ScreenTwistSystem.URadialBlurIntensity =
             (1f + (float)Math.Sin(roarTime * 0.5f)) * 0.3f *
             GuidaUtils.Smoothstep(18f, 27f, roarTime) *
@@ -134,8 +120,8 @@ public partial class KingSlime {
             (int)roarTime / 5 == (int)(previousTimer - 84f) / 5)
             return;
 
-        RoarLineEffectParticle line = ParticleManager.Instance.NewParticle<RoarLineEffectParticle>(
-            NPC.Center, Vector2.Zero);
+        RoarLineEffectParticle line = RoarLineEffectParticle.Spawn(
+            NPC.Center);
         line.rotation = Main.rand.NextFloat(MathHelper.TwoPi);
 
         // TombwardJourney's roar: a ring every five ticks, size 8, life 36,
@@ -143,7 +129,7 @@ public partial class KingSlime {
         TwistCircleParticle.Spawn(NPC.Center, 9f, 60, 0.25f);
         for (int i = 0; i < 3; i++) {
             Vector2 outward = Main.rand.NextVector2CircularEdge(1f, 1f);
-            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = SmokeParticle.Spawn(
                 NPC.Center + outward * NPC.width * 0.3f, outward * Main.rand.NextFloat(2f, 4f),
                 alpha: 0f, scale: Main.rand.NextFloat(0.9f, 1.5f));
             smoke.startOpacity = 0.34f;
@@ -161,7 +147,7 @@ public partial class KingSlime {
         Vector2 origin = NPC.Center + Vector2.UnitY * NPC.gfxOffY +
             new Vector2(Main.rand.NextFloat(-NPC.width * 0.53f, NPC.width * 0.53f),
                 Main.rand.NextFloat(-NPC.height * 0.12f, NPC.height * 0.43f));
-        GlowStreakParticle streak = ParticleManager.Instance.NewParticle<GlowStreakParticle>(
+        GlowStreakParticle streak = GlowStreakParticle.Spawn(
             origin, new Vector2(Main.rand.NextFloat(-0.22f, 0.22f),
                 -Main.rand.NextFloat(2.4f, 3.7f)));
         streak.color = Color.Lerp(new Color(112, 185, 255), Color.White,

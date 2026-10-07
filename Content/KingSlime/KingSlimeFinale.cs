@@ -126,8 +126,7 @@ public partial class KingSlime {
             if (Main.netMode != NetmodeID.Server &&
                 (PassedTime(60f) || PassedTime(120f))) {
                 SoundEngine.PlaySound(KingSlimeSound.Cast, NPC.Center);
-                ParticleManager.Instance.NewParticle<AbsorptionEffectParticle>(NPC.Center,
-                    Vector2.Zero, scale: 1.18f);
+                AbsorptionEffectParticle.Spawn(NPC.Center, scale: 1.18f);
                 TwistCircleParticle.Spawn(NPC.Center, 9f, 36, 0.24f, inverse: true);
             }
             return;
@@ -273,8 +272,8 @@ public partial class KingSlime {
             firstPreparation ? 0 : 4;
         if (!TryUltimateRoute(leg, out Vector2 start, out Vector2 end)) return;
         if (spearParticle?.IsAlive != true) {
-            spearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(
-                NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
+            spearParticle = KingSlimeSpearParticle.Spawn(
+                NPC.Center, alpha: 0f, scale: 2.5f);
             spearParticle.SetHolder(NPC);
         }
 
@@ -371,14 +370,12 @@ public partial class KingSlime {
                 !TryUltimateRoute(leg, out Vector2 start, out Vector2 end)) continue;
             ultimateWarningMask |= bit;
             Vector2 direction = Vector2.Normalize(end - start);
-            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
-                start - direction * 25f, Vector2.Zero);
-            StyleBodyWarning(warning);
-            if (Math.Abs(direction.Y) > Math.Abs(direction.X))
-                StyleVerticalBodyWarning(warning);
-            warning.lineRotation = direction.ToRotation() + MathHelper.PiOver2;
-            warning.lineLength = Vector2.Distance(start, end) + 50f;
-            warning.time = Math.Max(1f, (begin - Timer + 24f) / appliedTempo);
+            WarningLineParticle.Spawn(start - direction * 25f,
+                direction.ToRotation() + MathHelper.PiOver2,
+                Vector2.Distance(start, end) + 50f,
+                (begin - Timer + 24f) / appliedTempo,
+                width: (Math.Abs(direction.Y) > Math.Abs(direction.X) ? 136f : 96f) * NPC.scale,
+                opacity: 0.8f);
             CreateTeleportWarning(start, begin - Timer);
         }
         if ((ultimateWarningMask & (1 << 13)) == 0 &&
@@ -393,8 +390,7 @@ public partial class KingSlime {
 
     private void SpawnUltimateDarkness() {
         if (ultimateDarkness?.IsAlive != true) {
-            ultimateDarkness = ParticleManager.Instance
-                .NewParticle<ScreenMaskParticle>(Vector2.Zero, Vector2.Zero, alpha: 0f);
+            ultimateDarkness = ScreenMaskParticle.Spawn(Vector2.Zero, alpha: 0f);
             ultimateDarkness.drawLayer = ParticleLayer.BeforeNPCs;
             ultimateDarkness.SetTexture(ModAsset.WarningPixel.Value);
             ultimateDarkness.color = Color.Black;
@@ -408,14 +404,14 @@ public partial class KingSlime {
     private void SpawnUltimateChargeParticles() {
         for (int pulse = 12; pulse <= 124; pulse += 16)
             if (PassedTime(pulse))
-                ParticleManager.Instance.NewParticle<AbsorptionEffectParticle>(
-                    NPC.Center, Vector2.Zero);
+                AbsorptionEffectParticle.Spawn(
+                    NPC.Center);
 
         // The last streak fades out before the first teleport at tick 180.
         if (Timer >= 132f || (int)(Timer / 2f) == (int)(previousTimer / 2f)) return;
         for (int i = 0; i < (Timer < 72f ? 3 : 5); i++) {
             Vector2 offset = Main.rand.NextVector2CircularEdge(420f, 320f);
-            GlowStreakParticle streak = ParticleManager.Instance.NewParticle<GlowStreakParticle>(
+            GlowStreakParticle streak = GlowStreakParticle.Spawn(
                 NPC.Center + offset, -Vector2.Normalize(offset) * Main.rand.NextFloat(8f, 12f));
             streak.color = new Color(125, 200, 255);
             streak.drawSize = new Vector2(7f, 62f);
@@ -444,8 +440,8 @@ public partial class KingSlime {
             return;
         }
         if (hammerParticle?.IsAlive != true) {
-            hammerParticle = ParticleManager.Instance.NewParticle<KingSlimeHammerParticle>(
-                NPC.Center, Vector2.Zero, alpha: 0f);
+            hammerParticle = KingSlimeHammerParticle.Spawn(
+                NPC.Center, alpha: 0f);
             hammerParticle.SetHolder(NPC);
         }
         float raise = GuidaUtils.Smoothstep(855f, 890f, Timer);
@@ -552,8 +548,7 @@ public partial class KingSlime {
                 for (int i = 0; i < (deathTimer < 55f ? 2 : 3); i++) {
                     Vector2 offset = Main.rand.NextVector2Circular(
                         NPC.width * 0.58f, NPC.height * 0.46f);
-                    KingSlimeGelSplashParticle leak = ParticleManager.Instance
-                        .NewParticle<KingSlimeGelSplashParticle>(NPC.Center + offset,
+                    KingSlimeGelSplashParticle leak = KingSlimeGelSplashParticle.Spawn(NPC.Center + offset,
                             offset * 0.055f + Main.rand.NextVector2Circular(1f, 1f),
                             scale: Main.rand.NextFloat(0.10f, 0.22f));
                     leak.color = Color.Lerp(new Color(95, 165, 255),
@@ -599,8 +594,7 @@ public partial class KingSlime {
         SoundEngine.PlaySound(KingSlimeSound.BossDeath, NPC.Center);
         SoundEngine.PlaySound(KingSlimeSound.GelBurst, NPC.Center);
         TwistCircleParticle.Spawn(NPC.Center, waveSize, waveTime, waveStrength);
-        ParticleManager.Instance.NewParticle<RoarEffectParticle>(NPC.Center,
-            Vector2.Zero, scale: effectScale);
+        RoarEffectParticle.Spawn(NPC.Center, scale: effectScale);
         Main.instance.CameraModifiers.Add(new PunchCameraModifier(
             NPC.Center, Main.rand.NextVector2Unit(), cameraStrength, 6f, 20,
             1000f, FullName));
@@ -619,8 +613,7 @@ public partial class KingSlime {
             new Color(222, 242, 255));
         for (int i = 0; i < 14; i++) {
             Vector2 direction = Main.rand.NextVector2Unit();
-            KingSlimeGelSplashParticle gel = ParticleManager.Instance
-                .NewParticle<KingSlimeGelSplashParticle>(NPC.Center + direction *
+            KingSlimeGelSplashParticle gel = KingSlimeGelSplashParticle.Spawn(NPC.Center + direction *
                     Main.rand.NextFloat(0f, 85f), direction * Main.rand.NextFloat(2f, 8f),
                     scale: Main.rand.NextFloat(0.22f, 0.48f));
             gel.color = Color.Lerp(new Color(75, 140, 255),

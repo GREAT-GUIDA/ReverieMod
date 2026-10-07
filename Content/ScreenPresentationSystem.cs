@@ -202,8 +202,7 @@ public class ScreenPresentationSystem : ModSystem {
     }
 
     private static void SpawnFadeBurst(Vector2 center) {
-        TitleFadeEffectParticle effect = ParticleManager.Instance
-            .NewParticle<TitleFadeEffectParticle>(center, Vector2.Zero);
+        TitleFadeEffectParticle effect = TitleFadeEffectParticle.Spawn(center);
         effect.tint = headlineColor;
         titleParticles.Add(effect);
         TwistCircleParticle.Spawn(Main.screenPosition + center,
@@ -213,7 +212,7 @@ public class ScreenPresentationSystem : ModSystem {
 
     private static void SpawnBlink(Vector2 center) {
         Vector2 outward = Main.rand.NextVector2CircularEdge(1f, 1f);
-        TitleBlinkParticle blink = ParticleManager.Instance.NewParticle<TitleBlinkParticle>(
+        TitleBlinkParticle blink = TitleBlinkParticle.Spawn(
             center + outward * Main.rand.NextFloat(35f, 170f),
             outward * Main.rand.NextFloat(3.5f, 7f));
         blink.tint = Color.Lerp(headlineColor, subtitleColor, Main.rand.NextFloat());

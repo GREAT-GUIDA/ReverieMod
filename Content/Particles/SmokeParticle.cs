@@ -4,7 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace ReverieMod.Content.Particles;
 
-public class SmokeParticle : Particle {
+public class SmokeParticle : Particle<SmokeParticle> {
     public float startOpacity = 0.5f;
 
     public override Texture2D Texture => ModAsset.SmokeDust.Value;

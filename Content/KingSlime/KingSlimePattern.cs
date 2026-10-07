@@ -19,8 +19,7 @@ public partial class KingSlime {
     private ulong usedAttackMoves;
     private ulong usedHalfMeasureMoves;
     private ulong usedTwoMeasureMoves;
-    private uint lastPotionUseTick;
-    private bool hasUsedPotion;
+    private uint? lastPotionUseTick;
     private readonly List<(Move move, float started)> phaseTwoRecent = new();
     private byte lastPhaseTwoPattern;
     private float hopLaunchTimer = -1f;
@@ -46,7 +45,8 @@ public partial class KingSlime {
 
     private bool CanDrinkPotion() => !IsEcho && splitTimer == 0f &&
         NPC.life * 5 < NPC.lifeMax * 4 &&
-        (!hasUsedPotion || unchecked(Main.GameUpdateCount - lastPotionUseTick) >= 3600u);
+        (!lastPotionUseTick.HasValue ||
+            unchecked(Main.GameUpdateCount - lastPotionUseTick.Value) >= 3600u);
 
     private bool CanUseShortsword(Player target) =>
         Vector2.DistanceSquared(NPC.Center, target.Center) <= 200f * 200f;
@@ -82,9 +82,13 @@ public partial class KingSlime {
     private float SplitJumpOffset() => IsEcho ? 260f :
         splitTimer >= 90f && splitMergeStart < 0f ? -260f : 0f;
 
-    private bool TryStartSplitMerge() {
+    private bool TryStartSplitMerge(Player target) {
         if (IsEcho || splitTimer < 90f || splitMergeStart >= 0f ||
             NPC.life * 5 > NPC.lifeMax * 2) return false;
+        mergeIntoTwin = false;
+        if (TryGetSplitTwin(out NPC twin))
+            mergeIntoTwin = Vector2.DistanceSquared(twin.Center, target.Center) <
+                Vector2.DistanceSquared(NPC.Center, target.Center);
         splitMergeStart = splitTimer;
         patternKind = 0;
         Begin(Move.Split);
@@ -139,7 +143,7 @@ public partial class KingSlime {
         if (IntroActive) return;
         if (TryStartPendingSplit()) return;
         if (tempoStage == 0 && patternKind != 0 &&
-            patternStep >= (patternKind == 3 ? 3 : 2) && TryStartSplitMerge()) return;
+            patternStep >= (patternKind == 3 ? 3 : 2) && TryStartSplitMerge(target)) return;
         if (StartTeleportChain()) return;
         if (tempoStage > 0) {
             if (patternKind < 4 || patternKind > 6 ||
@@ -166,7 +170,6 @@ public partial class KingSlime {
         Move next = SelectPatternMove(target, ref destination, ref plannedTeleport);
         Begin(next);
         if (next == Move.DrinkPotion) {
-            hasUsedPotion = true;
             lastPotionUseTick = Main.GameUpdateCount;
         }
         if (plannedTeleport) {
@@ -256,8 +259,8 @@ public partial class KingSlime {
         for (int pass = 0; pass < 3 && candidates.Count == 0; pass++) {
             for (byte kind = 4; kind <= 6; kind++) {
                 if (pass < 2 && kind == lastPhaseTwoPattern ||
-                    !HasPhaseTwoChoice(target, kind, 0, pass > 0)) continue;
-                if (kind == 5 && !HasPhaseTwoChoice(target, 5, 1, pass > 0)) continue;
+                    PhaseTwoChoices(target, kind, 0, pass > 0).Count == 0) continue;
+                if (kind == 5 && PhaseTwoChoices(target, 5, 1, pass > 0).Count == 0) continue;
                 if (kind == 6 && PhaseTwoChoices(target, 6, 0, pass > 0).Count < 2) continue;
                 candidates.Add(kind);
             }
@@ -273,10 +276,6 @@ public partial class KingSlime {
         patternStep = 0;
         StartPhaseTwoStep(target);
     }
-
-    private bool HasPhaseTwoChoice(Player target, byte kind, byte step,
-        bool ignoreRecent = false) =>
-        PhaseTwoChoices(target, kind, step, ignoreRecent).Count > 0;
 
     private List<Move> PhaseTwoChoices(Player target, byte kind, byte step,
         bool ignoreRecent = false) {
@@ -346,7 +345,6 @@ public partial class KingSlime {
         if (next != Move.Hops && next != Move.Teleport)
             phaseTwoRecent.Add((next, measureTicks));
         if (next == Move.DrinkPotion) {
-            hasUsedPotion = true;
             lastPotionUseTick = Main.GameUpdateCount;
         }
         if (next == Move.Teleport) {

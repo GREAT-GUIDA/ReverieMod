@@ -8,7 +8,7 @@ namespace ReverieMod.Content.Particles;
 
 // Preview the arrival with the same blue slime dust used by vanilla King Slime's
 // teleport, spread over a faint body silhouette so the landing spot stays clear.
-public class TeleportWarningParticle : Particle {
+public class TeleportWarningParticle : Particle<TeleportWarningParticle> {
     public float beatPhase;
     public float beatSpeed = 1f;
     public override void SetDefaults() {

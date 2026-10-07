@@ -7,7 +7,7 @@ using Terraria.ID;
 
 namespace ReverieMod.Content.Particles;
 
-public class GlowStreakParticle : Particle {
+public class GlowStreakParticle : Particle<GlowStreakParticle> {
     public Vector2 drawSize;
 
     public override Texture2D Texture => ModAsset.TeleportSolidBloom.Value;

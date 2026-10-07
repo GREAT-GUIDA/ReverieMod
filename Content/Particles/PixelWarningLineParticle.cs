@@ -1,3 +1,4 @@
+using System;
 using GuidaSharedCode;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -6,10 +7,22 @@ using Terraria;
 namespace ReverieMod.Content.Particles;
 
 // A single white pixel is stretched into a line. It has no glow or arrow texture.
-public class PixelWarningLineParticle : Particle {
+public class PixelWarningLineParticle : Particle<PixelWarningLineParticle> {
     public float lineLength;
     public float lineWidth;
     public float opacity;
+
+    public new static PixelWarningLineParticle Spawn(Vector2 position, float rotation,
+        float length, float width, int duration, float opacity, Color? color = null) {
+        PixelWarningLineParticle line = Particle.Spawn<PixelWarningLineParticle>(position);
+        line.rotation = rotation;
+        line.lineLength = length;
+        line.lineWidth = width;
+        line.timeLeft = line.maxTimeLeft = Math.Max(1, duration);
+        line.opacity = opacity;
+        if (color.HasValue) line.color = color.Value;
+        return line;
+    }
 
     public override Texture2D Texture => ModAsset.WarningPixel.Value;
 
