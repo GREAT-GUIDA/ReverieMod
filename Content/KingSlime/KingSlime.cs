@@ -19,6 +19,20 @@ public partial class KingSlime : ModNPC {
     private enum Move { Hops, HighLeap, SpearRush, GrappleSlam, DrinkPotion, RopeGrenades, ShurikenFan, Split, UmbrellaRush, HammerSlam, Teleport, ShortswordThrust, FireWand, SlimeStaffRain, Intro, TeleportSpearRush, TeleportHammerSlam, PhaseTwoPotions, TeleportShuriken, Ultimate, Boomerang }
     // Attacks select an intent; the shared movement pass applies gravity and platform rules.
     private enum MotionMode { Natural, Controlled, Lift, FastFall, Dive, Rush, Merge, Scripted, GrappleFall }
+    [Flags]
+    private enum ExtraSyncFlags : ushort {
+        Grapple = 1 << 0,
+        Rope = 1 << 1,
+        Split = 1 << 2,
+        SpearRush = 1 << 3,
+        UmbrellaRush = 1 << 4,
+        TeleportRush = 1 << 5,
+        Teleport = 1 << 6,
+        Death = 1 << 7,
+        Ultimate = 1 << 8,
+        TeleportChain = 1 << 9,
+        DamageReduction = 1 << 10
+    }
 
     private Move CurrentMove { get => (Move)(int)NPC.ai[0]; set => NPC.ai[0] = (float)value; }
     private ref float Timer => ref NPC.ai[1];
@@ -31,6 +45,7 @@ public partial class KingSlime : ModNPC {
     // The crown and compression are client-side drawing state.
     private float landingCompression;
     private KingSlimeCrownParticle crownParticle;
+    private KingSlimeBodyTwistParticle bodyTwistParticle;
     private Vector2 bodyVisualScale;
     private bool bodyVisualInitialized;
     private float bodyShear;
@@ -130,7 +145,7 @@ public partial class KingSlime : ModNPC {
     public override bool ModifyCollisionData(Rectangle victimHitbox, ref int immunityCooldownSlot,
         ref MultipliableFloat damageMultiplier, ref Rectangle npcHitbox) {
         if (CurrentMove == Move.ShortswordThrust && Timer >= 12f && Timer < 32f) {
-            Vector2 tip = ShortswordTipPosition();
+            Vector2 tip = ShortswordHeldPosition() + ShortswordDirection() * 34f;
             npcHitbox.Inflate(-6, -4);
             npcHitbox = Rectangle.Union(npcHitbox,
                 new Rectangle((int)tip.X - 21, (int)tip.Y - 21, 42, 42));
@@ -141,36 +156,54 @@ public partial class KingSlime : ModNPC {
     }
 
     public override void SendExtraAI(BinaryWriter writer) {
+        ExtraSyncFlags flags = 0;
+        if (CurrentMove == Move.GrappleSlam) flags |= ExtraSyncFlags.Grapple;
+        if (CurrentMove == Move.RopeGrenades) flags |= ExtraSyncFlags.Rope;
+        if (splitTimer > 0f) flags |= ExtraSyncFlags.Split;
+        if (CurrentMove == Move.SpearRush) flags |= ExtraSyncFlags.SpearRush;
+        if (CurrentMove == Move.UmbrellaRush) flags |= ExtraSyncFlags.UmbrellaRush;
+        if (CurrentMove == Move.TeleportSpearRush) flags |= ExtraSyncFlags.TeleportRush;
+        if (teleportReady) flags |= ExtraSyncFlags.Teleport;
+        if (dying) flags |= ExtraSyncFlags.Death;
+        if (CurrentMove == Move.Ultimate && !dying) flags |= ExtraSyncFlags.Ultimate;
+        if (teleportChainReady || chainedTeleportAction) flags |= ExtraSyncFlags.TeleportChain;
+        if (!IsEcho && currentDamageReduction > 0f) flags |= ExtraSyncFlags.DamageReduction;
+
         writer.Write((byte)NPC.localAI[0]); // airborne
         writer.Write((byte)NPC.localAI[2]); // wall rebounds
         writer.Write(grounded);
         writer.Write(solidPassageActive);
-        writer.Write(grappleAnchor.X);
-        writer.Write(grappleAnchor.Y);
-        writer.Write(ropeLaunchPosition.X);
-        writer.Write(ropeLaunchPosition.Y);
-        writer.Write(splitTimer);
-        writer.Write(splitMergeStart);
+        writer.Write((ushort)flags);
+        if ((flags & ExtraSyncFlags.Grapple) != 0) {
+            writer.Write(grappleAnchor.X);
+            writer.Write(grappleAnchor.Y);
+        }
+        if ((flags & ExtraSyncFlags.Rope) != 0) {
+            writer.Write(ropeLaunchPosition.X);
+            writer.Write(ropeLaunchPosition.Y);
+        }
+        if ((flags & ExtraSyncFlags.Split) != 0) {
+            writer.Write(splitTimer);
+            writer.Write(splitMergeStart);
+            writer.Write((short)splitTwinIndex);
+        }
         writer.Write(measureTicks);
         writer.Write(introComplete);
-        writer.Write((short)splitTwinIndex);
         writer.Write(tempoStage);
-        writer.Write(fightElapsedTicks);
-        writer.Write(damageBeforeReduction);
-        writer.Write(currentDamageReduction);
-        writer.Write(patternKind);
-        writer.Write(patternStep);
+        if ((flags & ExtraSyncFlags.DamageReduction) != 0)
+            writer.Write(currentDamageReduction);
         writer.Write(actionElapsed);
         writer.Write(actionSerial);
-        writer.Write(spearRushDistanceScale);
-        writer.Write(umbrellaRushDistanceScale);
-        writer.Write(teleportRushDistance);
-        writer.Write(teleportReady);
-        writer.Write(teleportDestination.X);
-        writer.Write(teleportDestination.Y);
-        WriteDeathState(writer);
-        WriteUltimateState(writer);
-        WriteTeleportChain(writer);
+        if ((flags & ExtraSyncFlags.SpearRush) != 0) writer.Write(spearRushDistanceScale);
+        if ((flags & ExtraSyncFlags.UmbrellaRush) != 0) writer.Write(umbrellaRushDistanceScale);
+        if ((flags & ExtraSyncFlags.TeleportRush) != 0) writer.Write(teleportRushDistance);
+        if ((flags & ExtraSyncFlags.Teleport) != 0) {
+            writer.Write(teleportDestination.X);
+            writer.Write(teleportDestination.Y);
+        }
+        if ((flags & ExtraSyncFlags.Death) != 0) WriteDeathState(writer);
+        if ((flags & ExtraSyncFlags.Ultimate) != 0) WriteUltimateState(writer);
+        if ((flags & ExtraSyncFlags.TeleportChain) != 0) WriteTeleportChain(writer);
     }
 
     public override void ReceiveExtraAI(BinaryReader reader) {
@@ -178,19 +211,26 @@ public partial class KingSlime : ModNPC {
         NPC.localAI[2] = reader.ReadByte();
         grounded = reader.ReadBoolean();
         solidPassageActive = reader.ReadBoolean();
-        grappleAnchor = new Vector2(reader.ReadSingle(), reader.ReadSingle());
-        ropeLaunchPosition = new Vector2(reader.ReadSingle(), reader.ReadSingle());
-        splitTimer = reader.ReadSingle();
-        splitMergeStart = reader.ReadSingle();
+        ExtraSyncFlags flags = (ExtraSyncFlags)reader.ReadUInt16();
+        grappleAnchor = (flags & ExtraSyncFlags.Grapple) != 0
+            ? new Vector2(reader.ReadSingle(), reader.ReadSingle()) : Vector2.Zero;
+        ropeLaunchPosition = (flags & ExtraSyncFlags.Rope) != 0
+            ? new Vector2(reader.ReadSingle(), reader.ReadSingle()) : Vector2.Zero;
+        if ((flags & ExtraSyncFlags.Split) != 0) {
+            splitTimer = reader.ReadSingle();
+            splitMergeStart = reader.ReadSingle();
+            splitTwinIndex = reader.ReadInt16();
+        }
+        else {
+            splitTimer = 0f;
+            splitMergeStart = -1f;
+            splitTwinIndex = -1;
+        }
         measureTicks = reader.ReadSingle();
         introComplete = reader.ReadBoolean();
-        splitTwinIndex = reader.ReadInt16();
         tempoStage = reader.ReadByte();
-        fightElapsedTicks = reader.ReadSingle();
-        damageBeforeReduction = reader.ReadSingle();
-        currentDamageReduction = reader.ReadSingle();
-        patternKind = reader.ReadByte();
-        patternStep = reader.ReadByte();
+        currentDamageReduction = (flags & ExtraSyncFlags.DamageReduction) != 0
+            ? reader.ReadSingle() : 0f;
         actionElapsed = reader.ReadSingle();
         ushort receivedActionSerial = reader.ReadUInt16();
         bool actionChanged = actionSerial != receivedActionSerial;
@@ -205,15 +245,19 @@ public partial class KingSlime : ModNPC {
             ultimateLeg = -1;
         }
         actionSerial = receivedActionSerial;
-        spearRushDistanceScale = reader.ReadSingle();
-        umbrellaRushDistanceScale = reader.ReadSingle();
-        teleportRushDistance = reader.ReadSingle();
-        teleportReady = reader.ReadBoolean();
-        teleportDestination = new Vector2(reader.ReadSingle(), reader.ReadSingle());
-        ReadDeathState(reader);
-        ReadUltimateState(reader);
+        spearRushDistanceScale = (flags & ExtraSyncFlags.SpearRush) != 0
+            ? reader.ReadSingle() : 1f;
+        umbrellaRushDistanceScale = (flags & ExtraSyncFlags.UmbrellaRush) != 0
+            ? reader.ReadSingle() : 1f;
+        teleportRushDistance = (flags & ExtraSyncFlags.TeleportRush) != 0
+            ? reader.ReadSingle() : 0f;
+        teleportReady = (flags & ExtraSyncFlags.Teleport) != 0;
+        teleportDestination = teleportReady
+            ? new Vector2(reader.ReadSingle(), reader.ReadSingle()) : Vector2.Zero;
+        ReadDeathState(reader, (flags & ExtraSyncFlags.Death) != 0);
+        ReadUltimateState(reader, (flags & ExtraSyncFlags.Ultimate) != 0);
         if (appliedTempo == 0f) appliedTempo = TempoMultiplier;
-        ReadTeleportChain(reader, actionChanged);
+        ReadTeleportChain(reader, actionChanged, (flags & ExtraSyncFlags.TeleportChain) != 0);
     }
 
     public override bool? CanFallThroughPlatforms() {
@@ -288,7 +332,7 @@ public partial class KingSlime : ModNPC {
 
         // Keep the collision box and the drawing scale together as the slime loses mass.
         // Its feet and horizontal center stay in place while the box contracts.
-        float size = 1f - HealthProgress() * 0.28f;
+        float size = 1.035f - HealthProgress() * 0.315f;
         if (IsEcho) {
             float birth = GuidaUtils.Smoothstep(0f, 23f, NPC.localAI[3]);
             float merge = owner.splitMergeStart >= 0f
@@ -432,7 +476,7 @@ public partial class KingSlime : ModNPC {
 
     private void UpdateBodyRotation() {
         if (dying) {
-            float instability = MathHelper.Clamp(deathTimer / 100f, 0f, 1f);
+            float instability = MathHelper.Clamp(deathTimer / 120f, 0f, 1f);
             float wobble = (float)Math.Sin(deathTimer * 0.32f) *
                 (0.07f + 0.12f * instability);
             NPC.rotation = MathHelper.Lerp(NPC.rotation, wobble, 0.7f);
@@ -456,7 +500,7 @@ public partial class KingSlime : ModNPC {
 
     private Vector2 BodyTargetScale() {
         if (dying) {
-            float instability = GuidaUtils.Smoothstep(8f, 105f, deathTimer);
+            float instability = GuidaUtils.Smoothstep(8f, 125f, deathTimer);
             float stretchX = 1f + (float)Math.Sin(deathTimer * 0.35f) *
                 (0.16f + instability * 0.35f) +
                 (float)Math.Sin(deathTimer * 0.79f) * 0.07f * instability;
@@ -530,6 +574,12 @@ public partial class KingSlime : ModNPC {
 
     private Vector2 BodyDrawScale() => bodyVisualInitialized ? bodyVisualScale : BodyTargetScale();
 
+    private int BodyFrame() {
+        if (NPC.IsABestiaryIconDummy) return 0;
+        bool rushingWithSpear = CurrentMove == Move.SpearRush && Timer >= 78 && Timer < 112;
+        return grounded && !rushingWithSpear ? (int)(visualTicks / 12f) % 2 : 2;
+    }
+
     private void UpdateBodyPose() {
         if (Main.netMode == NetmodeID.Server) return;
         UpdateBodyElasticity();
@@ -538,6 +588,25 @@ public partial class KingSlime : ModNPC {
             ? Vector2.Lerp(bodyVisualScale, targetScale, dying ? 0.65f : 0.22f)
             : targetScale;
         bodyVisualInitialized = true;
+        UpdateBodyTwist();
+    }
+
+    private void UpdateBodyTwist() {
+        if (NPC.IsABestiaryIconDummy) return;
+        if (bodyTwistParticle == null || !bodyTwistParticle.IsAlive) {
+            bodyTwistParticle = ParticleManager.Instance.NewParticle<KingSlimeBodyTwistParticle>(
+                NPC.Bottom, Vector2.Zero);
+            bodyTwistParticle.SetHolder(NPC);
+        }
+
+        bodyTwistParticle.position = NPC.Bottom + new Vector2(0f, NPC.gfxOffY + 4f);
+        bodyTwistParticle.bodyScale = BodyDrawScale();
+        bodyTwistParticle.rotation = NPC.rotation;
+        bodyTwistParticle.frame = BodyFrame();
+        bodyTwistParticle.opacity = (0.20f + 0.03f * (float)Math.Sin(visualTicks * 0.08f)) *
+            TeleportOpacity() * (IsEcho ? 1f - NPC.alpha / 255f : 1f) *
+            (dying ? 1f - GuidaUtils.Smoothstep(128f, 138f, deathTimer) : 1f);
+        bodyTwistParticle.timeLeft = 2;
     }
 
     private void UpdateBodyElasticity() {
@@ -641,52 +710,42 @@ public partial class KingSlime : ModNPC {
         if (TryGetSplitTwin(out NPC twin) && twin.ModNPC is KingSlime echo)
             woodHost = echo;
         if (chestParticle?.IsAlive != true) {
-            chestParticle = ParticleManager.Instance?.NewParticle<KingSlimePropParticle>(
+            chestParticle = ParticleManager.Instance.NewParticle<KingSlimePropParticle>(
                 InteriorPosition(0f), Vector2.Zero);
-            if (chestParticle != null) chestParticle.SetHolder(NPC);
+            chestParticle.SetHolder(NPC);
         }
-        if (chestParticle != null) {
-            chestParticle.position = InteriorPosition(0f);
-            chestParticle.rotation = InteriorRotation(0f);
-            chestParticle.open = GoldItemBeingTaken() ||
-                (woodHost != this && WoodItemBeingTaken());
-            chestParticle.alpha = TeleportOpacity();
-            chestParticle.timeLeft = 2;
-        }
+        chestParticle.position = InteriorPosition(0f);
+        chestParticle.rotation = InteriorRotation(0f);
+        chestParticle.open = GoldItemBeingTaken() ||
+            (woodHost != this && WoodItemBeingTaken());
+        chestParticle.alpha = TeleportOpacity();
+        chestParticle.timeLeft = 2;
 
         if (woodChestParticle?.IsAlive != true) {
-            woodChestParticle = ParticleManager.Instance?.NewParticle<KingSlimePropParticle>(
+            woodChestParticle = ParticleManager.Instance.NewParticle<KingSlimePropParticle>(
                 woodHost.InteriorPosition(MathHelper.TwoPi / 3f), Vector2.Zero);
-            if (woodChestParticle != null) {
-                woodChestParticle.SetHolder(NPC);
-                woodChestParticle.wooden = true;
-            }
+            woodChestParticle.SetHolder(NPC);
+            woodChestParticle.wooden = true;
             woodHostIndex = woodHost.NPC.whoAmI;
             woodTransferTicks = 0;
         }
-        if (woodChestParticle != null) {
-            if (woodHostIndex != woodHost.NPC.whoAmI) {
-                woodHostIndex = woodHost.NPC.whoAmI;
-                woodTransferTicks = 8;
-            }
-            woodChestParticle.timeLeft = 2;
-            if (woodHost == this) FollowWoodChest(this);
+        if (woodHostIndex != woodHost.NPC.whoAmI) {
+            woodHostIndex = woodHost.NPC.whoAmI;
+            woodTransferTicks = 8;
         }
+        woodChestParticle.timeLeft = 2;
+        if (woodHost == this) FollowWoodChest(this);
 
         if (ninjaParticle?.IsAlive != true) {
-            ninjaParticle = ParticleManager.Instance?.NewParticle<KingSlimePropParticle>(
+            ninjaParticle = ParticleManager.Instance.NewParticle<KingSlimePropParticle>(
                 InteriorPosition(MathHelper.TwoPi * 2f / 3f), Vector2.Zero);
-            if (ninjaParticle != null) {
-                ninjaParticle.SetHolder(NPC);
-                ninjaParticle.ninja = true;
-            }
+            ninjaParticle.SetHolder(NPC);
+            ninjaParticle.ninja = true;
         }
-        if (ninjaParticle != null) {
-            ninjaParticle.position = InteriorPosition(MathHelper.TwoPi * 2f / 3f);
-            ninjaParticle.rotation = InteriorRotation(MathHelper.TwoPi * 2f / 3f);
-            ninjaParticle.alpha = TeleportOpacity();
-            ninjaParticle.timeLeft = 2;
-        }
+        ninjaParticle.position = InteriorPosition(MathHelper.TwoPi * 2f / 3f);
+        ninjaParticle.rotation = InteriorRotation(MathHelper.TwoPi * 2f / 3f);
+        ninjaParticle.alpha = TeleportOpacity();
+        ninjaParticle.timeLeft = 2;
     }
 
     private void FollowWoodChest(KingSlime host) {
@@ -713,10 +772,9 @@ public partial class KingSlime : ModNPC {
         if (!dying && IsTeleporting && Timer >= TeleportMoment && !teleportOccurred) return;
         if (!dying && IsTeleporting && teleportOccurred && Timer < TeleportMoment + 4f) return;
         if (crownParticle == null || !crownParticle.IsAlive) {
-            crownParticle = ParticleManager.Instance?.NewParticle<KingSlimeCrownParticle>(
+            crownParticle = ParticleManager.Instance.NewParticle<KingSlimeCrownParticle>(
                 !dying && IsTeleporting && teleportOccurred
                     ? InteriorPosition(0f) : CrownAnchor(), Vector2.Zero, scale: 0.85f);
-            if (crownParticle == null) return;
             crownParticle.SetHolder(NPC);
         }
         if (!dying && IsTeleporting && teleportOccurred && Timer < TeleportMoment + 24f) {
@@ -1117,7 +1175,7 @@ public partial class KingSlime : ModNPC {
         float strength = MathHelper.Clamp(1f - jumpTrailTicks / 42f, 0f, 1f);
         int count = jumpTrailTicks <= 8 ? 2 : 1;
         for (int i = 0; i < count; i++) {
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 NPC.Bottom - NPC.velocity * 0.7f +
                 new Vector2(Main.rand.NextFloat(-NPC.width * 0.18f, NPC.width * 0.18f),
                     -NPC.height * 0.12f + Main.rand.NextFloat(-5f, 3f)),
@@ -1125,11 +1183,9 @@ public partial class KingSlime : ModNPC {
                     -NPC.velocity.Y * 0.08f - 0.2f + Main.rand.NextFloat(-0.3f, 0.3f)),
                 alpha: 0f,
                 scale: NPC.scale * Main.rand.NextFloat(0.8f, 1.15f) * (0.65f + strength * 0.35f));
-            if (smoke != null) {
-                smoke.startOpacity = 0.16f + strength * 0.43f;
-                smoke.rotation = Main.rand.NextFloat(-0.4f, 0.4f);
-                smoke.angVelocity = Main.rand.NextFloat(-0.012f, 0.012f);
-            }
+            smoke.startOpacity = 0.16f + strength * 0.43f;
+            smoke.rotation = Main.rand.NextFloat(-0.4f, 0.4f);
+            smoke.angVelocity = Main.rand.NextFloat(-0.012f, 0.012f);
         }
     }
 
@@ -1313,16 +1369,14 @@ public partial class KingSlime : ModNPC {
         NPC.rotation = MathHelper.Lerp(NPC.rotation,
             MathHelper.Clamp(NPC.velocity.X * 0.012f, -0.14f, 0.14f), 0.16f);
         if (Main.netMode != NetmodeID.Server && (int)NPC.localAI[3] % 3 == 0) {
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 NPC.Center + Main.rand.NextVector2Circular(NPC.width * 0.3f, NPC.height * 0.25f),
                 -NPC.velocity * 0.12f + Main.rand.NextVector2Circular(0.5f, 0.5f),
                 alpha: 0f, scale: NPC.scale * Main.rand.NextFloat(0.8f, 1.2f));
-            if (smoke != null) {
-                smoke.drawLayer = ParticleLayer.BeforeProjectiles;
-                smoke.startOpacity = 0.23f;
-                smoke.timeLeft = 20;
-                smoke.maxTimeLeft = 20;
-            }
+            smoke.drawLayer = ParticleLayer.BeforeProjectiles;
+            smoke.startOpacity = 0.23f;
+            smoke.timeLeft = 20;
+            smoke.maxTimeLeft = 20;
         }
         MoveWithTerrain(target);
     }
@@ -1438,7 +1492,7 @@ public partial class KingSlime : ModNPC {
         if (Timer < 112) {
             motionMode = MotionMode.Rush;
             if (PassedTime(78)) {
-                SoundEngine.PlaySound(KingSlimeSound.ItemUse, NPC.Center);
+                KingSlimeSound.PlayRush(NPC.Center);
                 GroundEffects(heavy: true, landing: false);
                 NPC.netUpdate = true;
             }
@@ -1745,9 +1799,8 @@ public partial class KingSlime : ModNPC {
             return;
         }
         if (ropeParticle == null || !ropeParticle.IsAlive) {
-            ropeParticle = ParticleManager.Instance?.NewParticle<KingSlimeRopeParticle>(
+            ropeParticle = ParticleManager.Instance.NewParticle<KingSlimeRopeParticle>(
                 ropeLaunchPosition, Vector2.Zero, alpha: 0f, scale: 1.8f);
-            if (ropeParticle == null) return;
             ropeParticle.SetHolder(NPC);
             ropeParticle.launchPosition = ropeLaunchPosition;
         }
@@ -1779,9 +1832,8 @@ public partial class KingSlime : ModNPC {
         }
 
         if (potionParticle == null || !potionParticle.IsAlive) {
-            potionParticle = ParticleManager.Instance?.NewParticle<KingSlimePotionParticle>(
+            potionParticle = ParticleManager.Instance.NewParticle<KingSlimePotionParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-            if (potionParticle == null) return;
             potionParticle.SetHolder(NPC);
             potionParticle.variant = phasePotions ? (int)(Timer / 30f) + 1 : 0;
         }
@@ -1822,9 +1874,8 @@ public partial class KingSlime : ModNPC {
         }
 
         if (grappleParticle == null || !grappleParticle.IsAlive) {
-            grappleParticle = ParticleManager.Instance?.NewParticle<KingSlimeGrappleParticle>(
+            grappleParticle = ParticleManager.Instance.NewParticle<KingSlimeGrappleParticle>(
                 NPC.Top, Vector2.Zero, alpha: 0f, scale: 2.5f);
-            if (grappleParticle == null) return;
             grappleParticle.SetHolder(NPC);
             grappleParticle.launchPosition = NPC.Top + new Vector2(0f, 7f);
         }
@@ -1869,9 +1920,8 @@ public partial class KingSlime : ModNPC {
         }
 
         if (spearParticle == null || !spearParticle.IsAlive) {
-            spearParticle = ParticleManager.Instance?.NewParticle<KingSlimeSpearParticle>(NPC.Center, Vector2.Zero,
+            spearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(NPC.Center, Vector2.Zero,
                 alpha: 0f, scale: 2.5f);
-            if (spearParticle == null) return;
             spearParticle.SetHolder(NPC);
         }
 
@@ -1898,16 +1948,14 @@ public partial class KingSlime : ModNPC {
         spearParticle.tipRushStreak = Timer >= 78;
 
         if (Timer >= 32 && Timer < 78 && !spearWarningCreated) {
-            WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
                 NPC.Center - MoveValue.ToRotationVector2() * 24f, Vector2.Zero);
-            if (warning != null) {
-                spearWarningCreated = true;
-                warning.lineLength = 780f * spearRushDistanceScale;
-                StyleBodyWarning(warning);
-                warning.time = Math.Max(1f, (87f - Timer) / appliedTempo);
-                warning.arrowSpeed = appliedTempo;
-                warning.lineRotation = MoveValue + MathHelper.PiOver2;
-            }
+            spearWarningCreated = true;
+            warning.lineLength = 780f * spearRushDistanceScale;
+            StyleBodyWarning(warning);
+            warning.time = Math.Max(1f, (87f - Timer) / appliedTempo);
+            warning.arrowSpeed = appliedTempo;
+            warning.lineRotation = MoveValue + MathHelper.PiOver2;
         }
 
         if (Timer >= 78) {
@@ -1922,30 +1970,27 @@ public partial class KingSlime : ModNPC {
         Vector2 sideways = new Vector2(-direction.Y, direction.X);
 
         if (openingCircle || secondCircle) {
-            RushCircleParticle circle = ParticleManager.Instance?.NewParticle<RushCircleParticle>(
+            RushCircleParticle circle = ParticleManager.Instance.NewParticle<RushCircleParticle>(
                 NPC.Center - direction * (NPC.width * (openingCircle ? 0.28f : 0.14f)),
                 direction * (openingCircle ? 3.8f : 2.4f),
                 alpha: openingCircle ? 0.7f : 0.48f);
-            if (circle != null) {
-                circle.color = new Color(115, 195, 255);
-                circle.rotation = direction.ToRotation();
-                circle.drawScale = openingCircle ? new Vector2(0.44f, 0.56f) : new Vector2(0.34f, 0.44f);
-                circle.growthPerTick = openingCircle ? new Vector2(0.040f, 0.055f) : new Vector2(0.032f, 0.045f);
-                circle.velocityDrag = 0.9f;
-                circle.fadeInEnd = 0.08f;
-                circle.fadeOutStart = 0.3f;
-                circle.timeLeft = circle.maxTimeLeft = openingCircle ? 23 : 18;
-            }
+            circle.color = new Color(115, 195, 255);
+            circle.rotation = direction.ToRotation();
+            circle.drawScale = openingCircle ? new Vector2(0.44f, 0.56f) : new Vector2(0.34f, 0.44f);
+            circle.growthPerTick = openingCircle ? new Vector2(0.040f, 0.055f) : new Vector2(0.032f, 0.045f);
+            circle.velocityDrag = 0.9f;
+            circle.fadeInEnd = 0.08f;
+            circle.fadeOutStart = 0.3f;
+            circle.timeLeft = circle.maxTimeLeft = openingCircle ? 23 : 18;
         }
 
         float speed = NPC.velocity.Length();
         if ((int)Timer % 4 == 0) return;
         Vector2 spawnPosition = NPC.Center - direction * Main.rand.NextFloat(4f, NPC.width * 0.65f) +
             sideways * Main.rand.NextFloat(-NPC.height * 0.65f, NPC.height * 0.65f);
-        SpeedLineParticle line = ParticleManager.Instance?.NewParticle<SpeedLineParticle>(
+        SpeedLineParticle line = ParticleManager.Instance.NewParticle<SpeedLineParticle>(
             spawnPosition, -direction * Main.rand.NextFloat(2f, 5f),
             alpha: Main.rand.NextFloat(0.30f, 0.46f));
-        if (line == null) return;
         line.color = new Color(155, 210, 255);
         line.rotation = direction.ToRotation() - MathHelper.PiOver2;
         line.drawScale = new Vector2(Main.rand.NextFloat(0.15f, 0.25f),
@@ -1959,28 +2004,24 @@ public partial class KingSlime : ModNPC {
 
     private void UpdateSpearTipTrail() {
         if (spearTipTrail == null || !spearTipTrail.IsAlive) {
-            spearTipTrail = ParticleManager.Instance?.NewParticle<TrailParticle>(spearParticle.TipPosition,
+            spearTipTrail = ParticleManager.Instance.NewParticle<TrailParticle>(spearParticle.TipPosition,
                 Vector2.Zero);
-            if (spearTipTrail != null) {
-                Texture2D glow = spearParticle.RushStreakTexture;
-                // Give the sampled glows visible alpha; an alpha-zero tint makes
-                // this trail nearly disappear after its per-sample fade.
-                spearTipTrail.SetUp(10, glow, glow.Bounds, BlendState.AlphaBlend, 0.52f);
-                spearTipTrail.drawLayer = ParticleLayer.BeforePlayers;
-                spearTipTrail.color = new Color(150, 210, 255, 175);
-                spearTipTrail.useTrailScale2 = true;
-                spearTipTrail.externalSamplesOnly = true;
-            }
+            Texture2D glow = spearParticle.RushStreakTexture;
+            // Give the sampled glows visible alpha; an alpha-zero tint makes
+            // this trail nearly disappear after its per-sample fade.
+            spearTipTrail.SetUp(10, glow, glow.Bounds, BlendState.AlphaBlend, 0.52f);
+            spearTipTrail.drawLayer = ParticleLayer.BeforePlayers;
+            spearTipTrail.color = new Color(150, 210, 255, 175);
+            spearTipTrail.useTrailScale2 = true;
+            spearTipTrail.externalSamplesOnly = true;
         }
-        if (spearTipTrail != null) {
-            spearTipTrail.position = spearParticle.TipPosition;
-            spearTipTrail.trailScale2 = spearParticle.RushStreakScale;
-            spearTipTrail.PushTrailSample(spearTipTrail.position,
-                spearParticle.RushStreakRotation, SpriteEffects.None);
-            if (spearTipTrail.trailEnd < 10) spearTipTrail.trailEnd++;
-            spearTipTrail.trailStart = 0;
-            spearTipTrail.timeLeft = 11;
-        }
+        spearTipTrail.position = spearParticle.TipPosition;
+        spearTipTrail.trailScale2 = spearParticle.RushStreakScale;
+        spearTipTrail.PushTrailSample(spearTipTrail.position,
+            spearParticle.RushStreakRotation, SpriteEffects.None);
+        if (spearTipTrail.trailEnd < 10) spearTipTrail.trailEnd++;
+        spearTipTrail.trailStart = 0;
+        spearTipTrail.timeLeft = 11;
     }
 
     private void UpdateBodyMotionTrail() =>
@@ -1990,15 +2031,15 @@ public partial class KingSlime : ModNPC {
         bool whiteAfterimage = false) {
         Vector2 bottom = NPC.Bottom + new Vector2(0f, NPC.gfxOffY + 4f);
         if (newSegment || trail?.IsAlive != true) {
-            trail = ParticleManager.Instance?.NewParticle<TrailParticle>(bottom,
+            trail = ParticleManager.Instance.NewParticle<TrailParticle>(bottom,
                 Vector2.Zero);
-            if (trail == null) return;
             Texture2D body = ModAsset.KingSlimeBody.Value;
             trail.SetUp(10, body, new Rectangle(0, 240, 174, 120),
                 BlendState.AlphaBlend, whiteAfterimage ? 0.52f : 0.44f);
             trail.drawLayer = ParticleLayer.BeforeNPCs;
             trail.color = whiteAfterimage ? Color.White : new Color(145, 195, 255);
             trail.trailAfterImage = whiteAfterimage ? 1f : 0f;
+            trail.trailInterpolation = 2;
             trail.useCustomTrailOrigin = true;
             trail.trailOrigin = new Vector2(87f, 120f);
             trail.useTrailScale2 = true;
@@ -2065,19 +2106,17 @@ public partial class KingSlime : ModNPC {
         // Two larger puffs travel outward from either side of the body.
         for (int direction = -1; direction <= 1; direction += 2) {
             for (int i = 0; i < 2; i++) {
-                SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+                SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                     NPC.Bottom + new Vector2(direction * (NPC.width * 0.48f + i * 9f), -12f - i * 3f),
                     new Vector2(direction * (heavy ? 5.2f : 4.2f) * (i == 0 ? 1f : 0.72f),
                         i == 0 ? -0.85f : -1.65f),
                     alpha: 0f,
                     scale: NPC.scale * (heavy ? 1.9f : 1.45f) * (i == 0 ? 1f : 0.72f));
-                if (smoke != null) {
-                    smoke.drawLayer = ParticleLayer.BeforeProjectiles;
-                    smoke.startOpacity = 0.72f;
-                    smoke.timeLeft = i == 0 ? 36 : 34;
-                    smoke.maxTimeLeft = smoke.timeLeft;
-                    smoke.rotation = Main.rand.NextFloat(-0.2f, 0.2f);
-                }
+                smoke.drawLayer = ParticleLayer.BeforeProjectiles;
+                smoke.startOpacity = 0.72f;
+                smoke.timeLeft = i == 0 ? 36 : 34;
+                smoke.maxTimeLeft = smoke.timeLeft;
+                smoke.rotation = Main.rand.NextFloat(-0.2f, 0.2f);
             }
         }
 
@@ -2085,18 +2124,16 @@ public partial class KingSlime : ModNPC {
         int count = heavy ? 11 : 9;
         for (int i = 0; i < count; i++) {
             float offsetX = Main.rand.NextFloat(-NPC.width * 0.70f, NPC.width * 0.70f);
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 NPC.Bottom + new Vector2(offsetX, Main.rand.NextFloat(-4f, 0f)),
                 new Vector2(offsetX / NPC.width * (heavy ? 2.2f : 1.6f),
                     -Main.rand.NextFloat(0.5f, heavy ? 1.5f : 1.1f)),
                 alpha: 0f,
                 scale: NPC.scale * Main.rand.NextFloat(heavy ? 0.85f : 0.75f,
                     heavy ? 1.1f : 0.95f));
-            if (smoke != null) {
-                smoke.startOpacity = heavy ? 0.58f : 0.48f;
-                smoke.rotation = Main.rand.NextFloat(-0.3f, 0.3f);
-                smoke.angVelocity = Main.rand.NextFloat(-0.01f, 0.01f);
-            }
+            smoke.startOpacity = heavy ? 0.58f : 0.48f;
+            smoke.rotation = Main.rand.NextFloat(-0.3f, 0.3f);
+            smoke.angVelocity = Main.rand.NextFloat(-0.01f, 0.01f);
         }
 
         if (!landing) return;
@@ -2124,12 +2161,9 @@ public partial class KingSlime : ModNPC {
         // PreDraw receives lighting color before vanilla applies NPC.alpha.
         if (IsEcho) drawColor *= 1f - NPC.alpha / 255f;
         drawColor *= TeleportOpacity() * (dying
-            ? 1f - GuidaUtils.Smoothstep(108f, 118f, deathTimer) : 1f);
+            ? 1f - GuidaUtils.Smoothstep(128f, 138f, deathTimer) : 1f);
         Color bodyColor = drawColor * 0.84f;
-        bool rushingWithSpear = CurrentMove == Move.SpearRush && Timer >= 78 && Timer < 112;
-        int bodyFrame = NPC.IsABestiaryIconDummy ? 0 :
-            grounded && !rushingWithSpear ? (int)(visualTicks / 12f) % 2 : 2;
-        Rectangle source = new Rectangle(0, bodyFrame * 120, 174, 120);
+        Rectangle source = new Rectangle(0, BodyFrame() * 120, 174, 120);
         Texture2D body = ModAsset.KingSlimeBody.Value;
         Vector2 bottom = NPC.Bottom - screenPos + new Vector2(0, NPC.gfxOffY + 4f);
         Vector2 scale = BodyDrawScale();
@@ -2148,15 +2182,16 @@ public partial class KingSlime : ModNPC {
             return false;
         }
 
+        DrawDeathFlares(spriteBatch, screenPos);
         DrawPhaseFlare(spriteBatch, screenPos);
         DrawUltimateCharge(spriteBatch, screenPos);
-
+        
         if (KingSlimeShadowSystem.Draw(spriteBatch, body, source, bottom, NPC.rotation,
             scale, bodyColor, BodyDeformation, batch => DrawItemShadows(batch, screenPos))) {
             DrawInteriorOverlay(spriteBatch, screenPos, drawColor);
             return false;
         }
-
+        
         spriteBatch.Draw(body, bottom, source, bodyColor, NPC.rotation,
             new Vector2(87, 120), scale, SpriteEffects.None, 0);
         DrawInteriorOverlay(spriteBatch, screenPos, drawColor);
@@ -2260,6 +2295,8 @@ internal static class KingSlimeSound {
     public static SoundStyle BossDeath => new("ReverieMod/Assets/Sounds/KingSlimeBossDeath") { Volume = 1f, MaxInstances = 2 };
     public static SoundStyle Jump => SoundID.Item154 with { Volume = 0.65f, Pitch = -0.25f };
     public static SoundStyle ItemUse => SoundID.Item1 with { Volume = 0.75f };
+    public static void PlayRush(Vector2 position) =>
+        SoundEngine.PlaySound(ItemUse with { Volume = 1f }, position);
     public static SoundStyle Mechanism => SoundID.Item7 with { Volume = 0.6f };
     public static SoundStyle Impact => SoundID.Item14 with { Volume = 0.7f };
     public static SoundStyle Drink => SoundID.Item3 with { Volume = 0.7f, Pitch = -0.12f };

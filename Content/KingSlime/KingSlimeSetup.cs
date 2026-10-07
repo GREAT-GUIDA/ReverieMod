@@ -1,16 +1,31 @@
 using System;
 using GuidaSharedCode;
 using Microsoft.Xna.Framework;
+using ReverieMod.Content;
 using ReverieMod.Content.Particles;
 using Terraria;
 using Terraria.Audio;
 using Terraria.Graphics.CameraModifiers;
 using Terraria.ID;
+using Terraria.Localization;
 using Microsoft.Xna.Framework.Graphics;
 
 namespace ReverieMod.Content.KingSlime;
 
 public partial class KingSlime {
+    internal bool CinematicBarsActive =>
+        !IsEcho && !NPC.IsABestiaryIconDummy &&
+        (dying || CurrentMove == Move.Intro);
+
+    internal float CinematicBarProgress {
+        get {
+            if (!CinematicBarsActive) return 0f;
+            if (dying)
+                return GuidaUtils.Smoothstep(0f, 20f, deathTimer);
+            return GuidaUtils.Smoothstep(0f, 24f, Timer);
+        }
+    }
+
     private void StyleBodyWarning(WarningLineParticle line) {
         line.lineWidth = 96f * NPC.scale;
         line.alpha = 0.8f;
@@ -35,7 +50,7 @@ public partial class KingSlime {
 
     private void Intro(Player target) {
         NPC.damage = 0;
-        if (Timer < 90f) {
+        if (Timer < 84f) {
             if (!introStarted) {
                 introStarted = true;
                 if (Main.netMode != NetmodeID.MultiplayerClient) {
@@ -51,22 +66,20 @@ public partial class KingSlime {
                 introWarningCreated = true;
                 Vector2 warningStart = new(NPC.Center.X,
                     Math.Max(160f, target.Top.Y - 760f) + NPC.height * 0.5f);
-                WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+                WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
                     warningStart, Vector2.Zero);
-                if (warning != null) {
-                    warning.lineRotation = MathHelper.Pi;
-                    warning.lineLength = Math.Max(200f, target.Bottom.Y - warningStart.Y);
-                    StyleVerticalBodyWarning(warning);
-                    warning.time = 82f;
-                }
+                warning.lineRotation = MathHelper.Pi;
+                warning.lineLength = Math.Max(200f, target.Bottom.Y - warningStart.Y);
+                StyleVerticalBodyWarning(warning);
+                warning.time = 82f;
             }
             // Give the landing column a visible lead before the boss starts falling.
-            if (Timer < 14f) {
+            if (Timer < 8f) {
                 motionMode = MotionMode.Controlled;
                 NPC.velocity = Vector2.Zero;
                 return;
             }
-            if (PassedTime(14f)) {
+            if (PassedTime(8f)) {
                 NPC.velocity = Vector2.UnitY * 4f;
                 NPC.netUpdate = true;
             }
@@ -80,7 +93,7 @@ public partial class KingSlime {
             return;
         }
 
-        float roarTime = Timer - 90f;
+        float roarTime = Timer - 84f;
         NPC.velocity.X *= grounded ? 0.7f : 0.94f;
         if (LandedFromAir()) {
             NPC.localAI[0] = 0f;
@@ -89,47 +102,51 @@ public partial class KingSlime {
         }
 
         float roarEnvelope = GuidaUtils.Smoothstep(10f, 24f, roarTime) *
-            GuidaUtils.Smoothstep(90f, 70f, roarTime);
+            GuidaUtils.Smoothstep(96f, 76f, roarTime);
         landingCompression = Math.Max(landingCompression,
             (0.13f + 0.07f * (float)Math.Sin(roarTime * 0.34f)) * roarEnvelope);
         NPC.rotation = (float)Math.Sin(roarTime * 0.23f) * 0.075f * roarEnvelope;
         if (Main.netMode == NetmodeID.Server) return;
 
-        if (PassedTime(108f)) {
+        if (PassedTime(102f)) {
             SoundEngine.PlaySound(KingSlimeSound.Roar, NPC.Center);
             Main.instance.CameraModifiers.Add(new PunchCameraModifier(NPC.Center,
                 Main.rand.NextVector2CircularEdge(1f, 1f), 15f, 6f, 100));
             Main.instance.CameraModifiers.Add(new PunchCameraModifier(NPC.Center,
                 Main.rand.NextVector2CircularEdge(1f, 1f), 20f, 4f, 20));
         }
-        if (PassedTime(108f) || PassedTime(126f) || PassedTime(144f))
-            ParticleManager.Instance?.NewParticle<RoarEffectParticle>(
+        if (PassedTime(148f))
+            ScreenPresentationSystem.ShowTitle(132,
+                Language.GetTextValue("Mods.ReverieMod.KingSlimeTitles.Theme"),
+                new Color(245, 218, 131),
+                Language.GetTextValue("Mods.ReverieMod.KingSlimeTitles.Intro"),
+                new Color(106, 207, 255));
+        if (PassedTime(102f) || PassedTime(120f) || PassedTime(138f))
+            ParticleManager.Instance.NewParticle<RoarEffectParticle>(
                 NPC.Center, Vector2.Zero, scale: NPC.scale);
         ScreenTwistSystem.URadialBlurIntensity =
             (1f + (float)Math.Sin(roarTime * 0.5f)) * 0.3f *
             GuidaUtils.Smoothstep(18f, 27f, roarTime) *
-            GuidaUtils.Smoothstep(82f, 58f, roarTime);
+            GuidaUtils.Smoothstep(88f, 64f, roarTime);
         ScreenTwistSystem.URadialBlurPosition =
             (NPC.Center - Main.screenPosition) / Main.ScreenSize.ToVector2();
         if (roarTime < 18f || roarTime > 58f ||
-            (int)roarTime / 5 == (int)(previousTimer - 90f) / 5)
+            (int)roarTime / 5 == (int)(previousTimer - 84f) / 5)
             return;
+
+        RoarLineEffectParticle line = ParticleManager.Instance.NewParticle<RoarLineEffectParticle>(
+            NPC.Center, Vector2.Zero);
+        line.rotation = Main.rand.NextFloat(MathHelper.TwoPi);
 
         // TombwardJourney's roar: a ring every five ticks, size 8, life 36,
         // strength 0.2, layered under the same camera punches and roar sound.
-        TwistCircleParticle twist = ParticleManager.Instance?.NewParticle<TwistCircleParticle>(
-            NPC.Center, Vector2.Zero);
-        if (twist != null) {
-            twist.size = 8f;
-            twist.time = 36;
-            twist.strength = 0.2f;
-        }
+        TwistCircleParticle.Spawn(NPC.Center, 9f, 60, 0.25f);
         for (int i = 0; i < 3; i++) {
             Vector2 outward = Main.rand.NextVector2CircularEdge(1f, 1f);
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 NPC.Center + outward * NPC.width * 0.3f, outward * Main.rand.NextFloat(2f, 4f),
                 alpha: 0f, scale: Main.rand.NextFloat(0.9f, 1.5f));
-            if (smoke != null) smoke.startOpacity = 0.34f;
+            smoke.startOpacity = 0.34f;
         }
     }
 
@@ -138,16 +155,15 @@ public partial class KingSlime {
             Main.netMode == NetmodeID.Server) return;
 
         float entrance = CurrentMove == Move.PhaseTwoPotions
-            ? GuidaUtils.Smoothstep(0f, 25f, Timer) : 1f;
+            ? GuidaUtils.Smoothstep(86f, 90f, Timer) : 1f;
         if (Main.rand.NextFloat() >= 0.28f * entrance) return;
 
         Vector2 origin = NPC.Center + Vector2.UnitY * NPC.gfxOffY +
             new Vector2(Main.rand.NextFloat(-NPC.width * 0.53f, NPC.width * 0.53f),
                 Main.rand.NextFloat(-NPC.height * 0.12f, NPC.height * 0.43f));
-        GlowStreakParticle streak = ParticleManager.Instance?.NewParticle<GlowStreakParticle>(
+        GlowStreakParticle streak = ParticleManager.Instance.NewParticle<GlowStreakParticle>(
             origin, new Vector2(Main.rand.NextFloat(-0.22f, 0.22f),
                 -Main.rand.NextFloat(2.4f, 3.7f)));
-        if (streak == null) return;
         streak.color = Color.Lerp(new Color(112, 185, 255), Color.White,
             Main.rand.NextFloat(0.38f, 0.76f));
         streak.alpha = Main.rand.NextFloat(0.62f, 0.84f);
@@ -156,12 +172,42 @@ public partial class KingSlime {
         streak.timeLeft = streak.maxTimeLeft = Main.rand.Next(20, 29);
     }
 
+    private void DrawDeathFlares(SpriteBatch spriteBatch, Vector2 screenPos) {
+        if (!dying || IsEcho || deathTimer >= 138f) return;
+
+        Texture2D flare = ModAsset.KingSlimeDeathFlare.Value;
+        Vector2 center = NPC.Center - screenPos +
+            Vector2.UnitY * (NPC.gfxOffY + 4f);
+        float progress = MathHelper.Clamp(deathTimer / 138f, 0f, 1f);
+        spriteBatch.End();
+        spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Additive,
+            Main.DefaultSamplerState, DepthStencilState.None,
+            RasterizerState.CullCounterClockwise, null,
+            Main.GameViewMatrix.TransformationMatrix);
+        for (int i = 0; i < 6; i++) {
+            float phase = i * MathHelper.TwoPi / 6f;
+            float rotation = phase + deathTimer * (i % 2 == 0 ? 1f : -1f) *
+                (0.006f + i * 0.003f);
+            float size = NPC.width / (float)flare.Width * (2.3f + i * 0.45f) *
+                MathHelper.Lerp(0.6f, 4f, progress);
+            Color glow = Color.Lerp(new Color(75, 145, 255),
+                new Color(205, 235, 255), i / 5f);
+            spriteBatch.Draw(flare, center, null, glow, rotation,
+                flare.Size() * 0.5f, size, SpriteEffects.None, 0f);
+        }
+        spriteBatch.End();
+        spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend,
+            Main.DefaultSamplerState, DepthStencilState.None,
+            RasterizerState.CullCounterClockwise, null,
+            Main.GameViewMatrix.TransformationMatrix);
+    }
+
     private void DrawPhaseFlare(SpriteBatch spriteBatch, Vector2 screenPos) {
         if (tempoStage == 0 || IsEcho) return;
 
         Texture2D flare = ModAsset.TeleportFlare.Value;
         float entrance = CurrentMove == Move.PhaseTwoPotions
-            ? GuidaUtils.Smoothstep(0f, 30f, Timer) : 1f;
+            ? GuidaUtils.Smoothstep(86f, 90f, Timer) : 1f;
         float charge = UltimateActive ? GuidaUtils.Smoothstep(0f, 145f, Timer) : 0f;
         ultimateFlareBoost = MathHelper.Lerp(ultimateFlareBoost, charge, 0.08f);
         float opacity = entrance * TeleportOpacity() * (1f + ultimateFlareBoost * 0.65f);
@@ -228,22 +274,30 @@ public partial class KingSlime {
             ? owner : this;
     }
 
+    private bool HasPhaseDamageReduction() =>
+        CurrentMove is Move.Intro or Move.PhaseTwoPotions or Move.Split ||
+        CurrentMove == Move.Ultimate && Timer < 180f;
+
     private void UpdateCombatDurability() {
         NPC.defense = tempoStage > 0 ? 14 : 10;
-        if (IsEcho || NPC.IsABestiaryIconDummy) return;
+        if (IsEcho || NPC.IsABestiaryIconDummy ||
+            Main.netMode == Terraria.ID.NetmodeID.MultiplayerClient) return;
 
-        if (lastObservedLife >= 0 && NPC.life < lastObservedLife &&
-            Main.netMode != Terraria.ID.NetmodeID.MultiplayerClient) {
+        if (lastObservedLife >= 0 && NPC.life < lastObservedLife) {
             damageBeforeReduction += (lastObservedLife - NPC.life) /
-                (1f - currentDamageReduction);
+                ((1f - currentDamageReduction) *
+                    (HasPhaseDamageReduction() ? 0.5f : 1f));
             NPC.netUpdate = true;
         }
         lastObservedLife = NPC.life;
         fightElapsedTicks++;
+        float previousReduction = currentDamageReduction;
         float elapsedSeconds = fightElapsedTicks / 60f;
         float secondsLeftToTarget = 120f - elapsedSeconds;
         if (secondsLeftToTarget <= 0f || damageBeforeReduction <= 0f) {
             currentDamageReduction = 0f;
+            if (previousReduction > 0f && Main.netMode == Terraria.ID.NetmodeID.Server)
+                NPC.netUpdate = true;
             return;
         }
 
@@ -251,10 +305,16 @@ public partial class KingSlime {
         // Reduce only the damage that would otherwise finish the fight before two minutes.
         currentDamageReduction = MathHelper.Clamp(
             1f - NPC.life / (estimatedDps * secondsLeftToTarget), 0f, 0.4f);
+        if (Main.netMode == Terraria.ID.NetmodeID.Server &&
+            (previousReduction > 0f && currentDamageReduction == 0f ||
+                currentDamageReduction > 0f && (int)fightElapsedTicks % 30 == 0))
+            NPC.netUpdate = true;
     }
 
     public override void ModifyIncomingHit(ref NPC.HitModifiers modifiers) {
-        modifiers.FinalDamage *= 1f - DamageOwner().currentDamageReduction;
+        KingSlime owner = DamageOwner();
+        modifiers.FinalDamage *= (1f - owner.currentDamageReduction) *
+            (owner.HasPhaseDamageReduction() ? 0.5f : 1f);
     }
 
     public override void ApplyDifficultyAndPlayerScaling(int numPlayers, float balance, float bossAdjustment) {

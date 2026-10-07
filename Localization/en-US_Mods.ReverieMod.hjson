@@ -1,6 +1,18 @@
 # This file will automatically update with entries for new content after a build and reload.
 # Please read https://github.com/tModLoader/tModLoader/wiki/Localization to learn more about localization and these files.
 
+KingSlimeTitles: {
+	Theme: "Slime Dream"
+	Intro: "King Slime's Revenge"
+	Defeated: "Defeated"
+}
+
+EyeOfCthulhuTitles: {
+	Theme: "Dream of the Eye of Cthulhu"
+	Intro: "Oculus"
+	Defeated: "Defeated"
+}
+
 Items: {
 	Test: {
 		DisplayName: "Test"
@@ -35,6 +47,8 @@ Items: {
 }
 
 NPCs: {
+	EyeOfCthulhu.DisplayName: "Eye of Cthulhu"
+	CthulhusServant.DisplayName: "Servant of Cthulhu"
 	DreamEye.DisplayName: "Dream Eye"
 	EyeServant.DisplayName: "Eye Servant"
 	KingSlime.DisplayName: "King Slime"

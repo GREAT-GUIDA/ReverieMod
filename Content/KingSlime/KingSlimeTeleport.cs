@@ -95,9 +95,8 @@ public partial class KingSlime {
     }
 
     private void CreateTeleportWarning(Vector2 destination, float musicalTicks) {
-        TeleportWarningParticle warning = ParticleManager.Instance?.NewParticle<TeleportWarningParticle>(
+        TeleportWarningParticle warning = ParticleManager.Instance.NewParticle<TeleportWarningParticle>(
             destination + Vector2.UnitY * NPC.height * 0.5f, Vector2.Zero);
-        if (warning == null) return;
         warning.width = NPC.width;
         warning.height = NPC.height;
         warning.beatPhase = measureTicks % 22.5f;
@@ -116,13 +115,7 @@ public partial class KingSlime {
         landingCompression = landAtDestination ? 0.34f : 0f;
         SpawnTeleportDust(NPC.Center, true);
         if (Main.netMode != NetmodeID.Server) {
-            TwistCircleParticle twist = ParticleManager.Instance?.NewParticle<TwistCircleParticle>(
-                NPC.Center, Vector2.Zero);
-            if (twist != null) {
-                twist.size = 6f;
-                twist.time = 25;
-                twist.strength = 0.15f;
-            }
+            TwistCircleParticle.Spawn(NPC.Center, 6f, 25, 0.15f);
         }
         SoundEngine.PlaySound(KingSlimeSound.Teleport, NPC.Center);
         NPC.netUpdate = true;
@@ -199,9 +192,8 @@ public partial class KingSlime {
 
     private void UpdateQueuedSpear() {
         if (queuedSpearParticle?.IsAlive != true) {
-            queuedSpearParticle = ParticleManager.Instance?.NewParticle<KingSlimeSpearParticle>(
+            queuedSpearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-            if (queuedSpearParticle == null) return;
             queuedSpearParticle.SetHolder(NPC);
         }
         float turn = GuidaUtils.Smoothstep(95f, 131f, actionElapsed);
@@ -233,9 +225,8 @@ public partial class KingSlime {
         float teleportMoment = teleportChainMove == Move.TeleportSpearRush ? 54f : 48f;
         CreateTeleportWarning(teleportChainDestination, remaining + teleportMoment - 45f);
         if (teleportChainMove == Move.TeleportSpearRush) {
-            WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
                 teleportChainDestination, Vector2.Zero);
-            if (warning == null) return;
             warning.lineLength = teleportChainRushDistance;
             warning.lineRotation = teleportChainDirection + MathHelper.PiOver2;
             StyleBodyWarning(warning);
@@ -243,9 +234,8 @@ public partial class KingSlime {
             warning.arrowSpeed = appliedTempo;
         }
         else if (teleportChainMove == Move.TeleportHammerSlam) {
-            WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
                 teleportChainDestination + Vector2.UnitY * NPC.height * 0.5f, Vector2.Zero);
-            if (warning == null) return;
             warning.lineRotation = MathHelper.Pi;
             warning.lineLength = MathHelper.Clamp(target.Bottom.Y - teleportChainDestination.Y -
                 NPC.height * 0.5f + 112f, 180f, 880f);
@@ -288,7 +278,6 @@ public partial class KingSlime {
     }
 
     private void WriteTeleportChain(BinaryWriter writer) {
-        writer.Write(teleportChainDecided);
         writer.Write(teleportChainReady);
         writer.Write(chainedTeleportAction);
         writer.Write((byte)teleportChainMove);
@@ -298,15 +287,22 @@ public partial class KingSlime {
         writer.Write(teleportChainRushDistance);
     }
 
-    private void ReadTeleportChain(BinaryReader reader, bool actionChanged) {
+    private void ReadTeleportChain(BinaryReader reader, bool actionChanged, bool active) {
         bool previewed = teleportChainPreviewCreated;
-        teleportChainDecided = reader.ReadBoolean();
-        teleportChainReady = reader.ReadBoolean();
-        chainedTeleportAction = reader.ReadBoolean();
-        teleportChainMove = (Move)reader.ReadByte();
-        teleportChainDestination = new Vector2(reader.ReadSingle(), reader.ReadSingle());
-        teleportChainDirection = reader.ReadSingle();
-        teleportChainRushDistance = reader.ReadSingle();
+        teleportChainReady = active && reader.ReadBoolean();
+        chainedTeleportAction = active && reader.ReadBoolean();
+        if (active) {
+            teleportChainMove = (Move)reader.ReadByte();
+            teleportChainDestination = new Vector2(reader.ReadSingle(), reader.ReadSingle());
+            teleportChainDirection = reader.ReadSingle();
+            teleportChainRushDistance = reader.ReadSingle();
+        }
+        else {
+            teleportChainMove = default;
+            teleportChainDestination = Vector2.Zero;
+            teleportChainDirection = 0f;
+            teleportChainRushDistance = 0f;
+        }
         if (!actionChanged) return;
         teleportChainPreviewCreated = false;
         if (chainedTeleportAction && CurrentMove == Move.TeleportSpearRush &&
@@ -486,7 +482,7 @@ public partial class KingSlime {
             return;
         }
         if (PassedTime(78f)) {
-            SoundEngine.PlaySound(KingSlimeSound.ItemUse, NPC.Center);
+            KingSlimeSound.PlayRush(NPC.Center);
             GroundEffects(heavy: true, landing: false);
         }
         if (previousTimer < 112f) {
@@ -548,9 +544,8 @@ public partial class KingSlime {
 
     private void UpdateTeleportSpearVisuals() {
         if (spearParticle?.IsAlive != true) {
-            spearParticle = ParticleManager.Instance?.NewParticle<KingSlimeSpearParticle>(
+            spearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-            if (spearParticle == null) return;
             spearParticle.SetHolder(NPC);
         }
         float turn = GuidaUtils.Smoothstep(8f, 42f, Timer);
@@ -569,16 +564,14 @@ public partial class KingSlime {
         spearParticle.timeLeft = 2;
 
         if (Timer >= 8f && Timer < 78f && !spearWarningCreated) {
-            WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
                 teleportDestination, Vector2.Zero);
-            if (warning != null) {
-                spearWarningCreated = true;
-                warning.lineLength = teleportRushDistance;
-                StyleBodyWarning(warning);
-                warning.time = Math.Max(1f, (78f - Timer) / appliedTempo);
-                warning.arrowSpeed = appliedTempo;
-                warning.lineRotation = MoveValue + MathHelper.PiOver2;
-            }
+            spearWarningCreated = true;
+            warning.lineLength = teleportRushDistance;
+            StyleBodyWarning(warning);
+            warning.time = Math.Max(1f, (78f - Timer) / appliedTempo);
+            warning.arrowSpeed = appliedTempo;
+            warning.lineRotation = MoveValue + MathHelper.PiOver2;
         }
         if (Timer >= 78f && previousTimer < 112f) {
             UpdateBodyMotionTrail();
@@ -591,9 +584,8 @@ public partial class KingSlime {
     private void ShowTeleportHammerWarning(Player target) {
         if (Timer < 10f || Timer >= 81f || teleportHammerWarningCreated ||
             Main.netMode == NetmodeID.Server) return;
-        WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+        WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
             teleportDestination + Vector2.UnitY * NPC.height * 0.5f, Vector2.Zero);
-        if (warning == null) return;
         teleportHammerWarningCreated = true;
         warning.lineRotation = MathHelper.Pi;
         warning.lineLength = MathHelper.Clamp(target.Bottom.Y - teleportDestination.Y -

@@ -63,9 +63,8 @@ public class KingSlimeFireball : ModProjectile {
     private void UpdateAfterimage() {
         if (Main.netMode == NetmodeID.Server) return;
         if (afterimage?.IsAlive != true) {
-            afterimage = ParticleManager.Instance?.NewParticle<TrailParticle>(
+            afterimage = ParticleManager.Instance.NewParticle<TrailParticle>(
                 Projectile.Center, Vector2.Zero);
-            if (afterimage == null) return;
             afterimage.SetUp(8, ModAsset.KingSlimeFireball.Value,
                 new Rectangle(0, Projectile.frame * 64, 48, 64),
                 BlendState.AlphaBlend, 0.34f, 2.05f);
@@ -202,7 +201,11 @@ public class KingSlimeGrenade : ModProjectile {
             if (Projectile.velocity.LengthSquared() < 0.0025f)
                 Projectile.velocity = Vector2.Zero;
             Projectile.rotation += Projectile.velocity.X * 0.025f;
-            if (Projectile.ai[2] >= primingDuration) Explode();
+            if (Projectile.ai[2] >= primingDuration) {
+                if (Main.netMode == NetmodeID.MultiplayerClient)
+                    Projectile.timeLeft = Math.Max(Projectile.timeLeft, 30);
+                else Explode();
+            }
             return;
         }
 
@@ -222,27 +225,25 @@ public class KingSlimeGrenade : ModProjectile {
             smoke.noGravity = true;
         }
         if (Main.netMode != NetmodeID.Server && (int)Projectile.ai[2] % 2 == 0) {
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 Projectile.Center - Projectile.velocity * 0.8f +
                     Main.rand.NextVector2Circular(5f, 5f),
                 -Projectile.velocity * 0.035f + Main.rand.NextVector2Circular(0.45f, 0.45f),
                 alpha: 0f, scale: Main.rand.NextFloat(0.4f, 0.65f));
-            if (smoke != null) {
-                smoke.drawLayer = ParticleLayer.BeforeProjectiles;
-                smoke.startOpacity = Main.rand.NextFloat(0.28f, 0.38f);
-                smoke.timeLeft = smoke.maxTimeLeft = Main.rand.Next(25, 34);
-            }
+            smoke.drawLayer = ParticleLayer.BeforeProjectiles;
+            smoke.startOpacity = Main.rand.NextFloat(0.28f, 0.38f);
+            smoke.timeLeft = smoke.maxTimeLeft = Main.rand.Next(25, 34);
         }
-        if (bounceCount > 0 && previousVerticalSpeed < 0f && Projectile.velocity.Y >= -0.15f)
+        if (Main.netMode != NetmodeID.MultiplayerClient && bounceCount >= 2 &&
+            previousVerticalSpeed < 0f && Projectile.velocity.Y >= -0.15f)
             StartPriming();
     }
 
     private void UpdateAfterimage() {
         if (Main.netMode == NetmodeID.Server) return;
         if (afterimage == null || !afterimage.IsAlive) {
-            afterimage = ParticleManager.Instance?.NewParticle<TrailParticle>(Projectile.Center,
+            afterimage = ParticleManager.Instance.NewParticle<TrailParticle>(Projectile.Center,
                 Vector2.Zero);
-            if (afterimage == null) return;
             Texture2D texture = ModAsset.KingSlimeGrenade.Value;
             afterimage.SetUp(9, texture, texture.Bounds, BlendState.AlphaBlend, 0.22f,
                 Projectile.scale);
@@ -263,15 +264,20 @@ public class KingSlimeGrenade : ModProjectile {
         if (Math.Abs(Projectile.velocity.X - oldVelocity.X) > 0.01f)
             Projectile.velocity.X = -oldVelocity.X * 0.55f;
         if (oldVelocity.Y > 0f && Projectile.velocity.Y < oldVelocity.Y - 0.01f) {
-            bounceCount = 1;
+            if (Main.netMode != NetmodeID.MultiplayerClient && bounceCount < 2)
+                bounceCount++;
             if (Main.netMode != NetmodeID.Server)
                 SoundEngine.PlaySound(KingSlimeSound.Mechanism, Projectile.Center);
-            // Each landing varies the height of the rebound; the fuse is fixed.
-            Projectile.velocity.Y = -Main.rand.NextFloat(5.4f, 9.6f) * tempoMultiplier;
+            // The second rebound is smaller; the fuse begins near its apex.
+            float reboundSpeed = Main.netMode == NetmodeID.MultiplayerClient
+                ? bounceCount >= 2 ? 4.2f : 7.5f
+                : bounceCount >= 2 ? Main.rand.NextFloat(3.2f, 5.2f)
+                    : Main.rand.NextFloat(5.4f, 9.6f);
+            Projectile.velocity.Y = -reboundSpeed * tempoMultiplier;
             Projectile.velocity.X = MathHelper.Lerp(Projectile.velocity.X * 0.55f,
                 Math.Sign(Projectile.velocity.X) * 2.2f * tempoMultiplier, 0.7f);
         }
-        Projectile.netUpdate = true;
+        if (Main.netMode != NetmodeID.MultiplayerClient) Projectile.netUpdate = true;
         return false;
     }
 
@@ -303,14 +309,8 @@ public class KingSlimeGrenade : ModProjectile {
         Terraria.Audio.SoundEngine.PlaySound(KingSlimeSound.Impact, Projectile.Center);
         Main.instance.CameraModifiers.Add(new PunchCameraModifier(
             Projectile.Center, Main.rand.NextVector2Unit(), 7f, 6f, 13));
-        TwistCircleParticle twist = ParticleManager.Instance?.NewParticle<TwistCircleParticle>(
-            Projectile.Center, Vector2.Zero);
-        if (twist != null) {
-            twist.size = 6.5f;
-            twist.time = 26;
-            twist.strength = 0.16f;
-        }
-        ParticleManager.Instance?.NewParticle<ExplosionEffectParticle>(
+        TwistCircleParticle.Spawn(Projectile.Center, 6.5f, 26, 0.16f);
+        ParticleManager.Instance.NewParticle<ExplosionEffectParticle>(
             Projectile.Center, Vector2.Zero,
             scale: ExplosionDiameter / (float)ModAsset.ExplosionSpread.Value.Width *
                 0.9f * ExplosionVisualScale);
@@ -326,15 +326,13 @@ public class KingSlimeGrenade : ModProjectile {
         int count = 14;
         for (int i = 0; i < count; i++) {
             Vector2 direction = (MathHelper.TwoPi * i / count + Main.rand.NextFloat(-0.2f, 0.2f)).ToRotationVector2();
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 Projectile.Center + direction * Main.rand.NextFloat(6f, 18f) * ExplosionVisualScale,
                 direction * Main.rand.NextFloat(2.8f, 4.6f) * ExplosionVisualScale,
                 alpha: 0f,
                 scale: Main.rand.NextFloat(1.2f, 1.65f) * ExplosionVisualScale);
-            if (smoke != null) {
-                smoke.color = new Color(205, 190, 170);
-                smoke.startOpacity = 0.68f;
-            }
+            smoke.color = new Color(205, 190, 170);
+            smoke.startOpacity = 0.68f;
         }
     }
 
@@ -444,16 +442,14 @@ public class KingSlimeShuriken : ModProjectile {
                 (1f - Projectile.ai[2] / WarningDuration);
             if (Main.netMode != NetmodeID.Server && Projectile.localAI[0] == 0f) {
                 Projectile.localAI[0] = 1f;
-                PixelWarningLineParticle line = ParticleManager.Instance?.NewParticle<PixelWarningLineParticle>(
+                PixelWarningLineParticle line = ParticleManager.Instance.NewParticle<PixelWarningLineParticle>(
                     Projectile.Center, Vector2.Zero);
-                if (line != null) {
-                    line.rotation = Projectile.ai[1];
-                    line.lineLength = 1500f;
-                    line.lineWidth = 4.2f;
-                    line.opacity = 0.37f;
-                    line.timeLeft = line.maxTimeLeft =
-                        (int)Math.Ceiling(WarningDuration / tempoMultiplier);
-                }
+                line.rotation = Projectile.ai[1];
+                line.lineLength = 1500f;
+                line.lineWidth = 4.2f;
+                line.opacity = 0.37f;
+                line.timeLeft = line.maxTimeLeft =
+                    (int)Math.Ceiling(WarningDuration / tempoMultiplier);
             }
             if (Projectile.ai[2] >= WarningDuration) {
                 Projectile.ai[0] = 2f;
@@ -477,15 +473,15 @@ public class KingSlimeShuriken : ModProjectile {
     private void UpdateAfterimage() {
         if (Main.netMode == NetmodeID.Server) return;
         if (afterimage == null || !afterimage.IsAlive) {
-            afterimage = ParticleManager.Instance?.NewParticle<TrailParticle>(Projectile.Center,
+            afterimage = ParticleManager.Instance.NewParticle<TrailParticle>(Projectile.Center,
                 Vector2.Zero);
-            if (afterimage == null) return;
             Texture2D texture = ModAsset.KingSlimeShuriken.Value;
             afterimage.SetUp(9, texture, texture.Bounds, BlendState.AlphaBlend, 0.42f,
                 Projectile.scale);
             afterimage.drawLayer = ParticleLayer.BeforeProjectiles;
             afterimage.color = Color.White;
             afterimage.trailAfterImage = 1f;
+            afterimage.trailInterpolation = 1;
             afterimage.externalSamplesOnly = true;
         }
         afterimage.position = Projectile.Center;
@@ -512,17 +508,17 @@ public class KingSlimeBoomerang : ModProjectile {
     private TrailParticle trail;
     private float tempoMultiplier = 1f;
     private int throwerNpcIndex = -1;
-    public static float TravelDistance => 900f;
+    public static float TravelDistance => 850f;
 
     public override string Texture => ModAsset.KingSlimeBoomerang_Mod;
 
     public override void SetDefaults() {
-        Projectile.width = 26;
-        Projectile.height = 26;
+        Projectile.width = 24;
+        Projectile.height = 24;
         Projectile.scale = 2.8f;
         Projectile.hostile = true;
         Projectile.penetrate = -1;
-        Projectile.timeLeft = 176;
+        Projectile.timeLeft = 196;
         Projectile.tileCollide = false;
         Projectile.ignoreWater = true;
         Projectile.netImportant = true;
@@ -537,20 +533,24 @@ public class KingSlimeBoomerang : ModProjectile {
 
     public override void SendExtraAI(BinaryWriter writer) {
         writer.Write(tempoMultiplier);
-        writer.Write((short)throwerNpcIndex);
+        writer.Write(Projectile.localAI[0]);
     }
 
     public override void ReceiveExtraAI(BinaryReader reader) {
         tempoMultiplier = reader.ReadSingle();
-        throwerNpcIndex = reader.ReadInt16();
+        Projectile.localAI[0] = reader.ReadSingle();
     }
 
     public override void AI() {
+        float previousAge = Projectile.localAI[0];
         float age = Projectile.localAI[0] += tempoMultiplier;
+        if (Main.netMode != NetmodeID.MultiplayerClient &&
+            (previousAge < 84f && age >= 84f || previousAge < 94f && age >= 94f))
+            Projectile.netUpdate = true;
         Vector2 launch = new(Projectile.ai[0], Projectile.ai[1]);
         Vector2 direction = Projectile.ai[2].ToRotationVector2();
-        float outward = MathHelper.Clamp(age / 76f, 0f, 1f);
-        float returnProgress = GuidaUtils.Smoothstep(84f, 156f, age);
+        float outward = MathHelper.Clamp(age / 84f, 0f, 1f);
+        float returnProgress = GuidaUtils.Smoothstep(94f, 172f, age);
         float remaining = 1f - outward;
         float distance = TravelDistance * (1f - remaining * remaining) *
             (1f - returnProgress);
@@ -581,9 +581,8 @@ public class KingSlimeBoomerang : ModProjectile {
     private void UpdateTrail() {
         if (Main.netMode == NetmodeID.Server) return;
         if (trail?.IsAlive != true) {
-            trail = ParticleManager.Instance?.NewParticle<TrailParticle>(Projectile.Center,
+            trail = ParticleManager.Instance.NewParticle<TrailParticle>(Projectile.Center,
                 Vector2.Zero);
-            if (trail == null) return;
             Texture2D texture = ModAsset.KingSlimeBoomerang.Value;
             trail.SetUp(9, texture, texture.Bounds, BlendState.AlphaBlend,
                 0.42f, Projectile.scale);
@@ -626,10 +625,9 @@ public class KingSlimeDropSpawner : ModProjectile {
         if (Main.netMode == NetmodeID.Server || Projectile.localAI[0] != 0f) return;
         Projectile.localAI[0] = 1f;
         float warningLength = Projectile.ai[1] + 400f;
-        WarningLineParticle line = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+        WarningLineParticle line = ParticleManager.Instance.NewParticle<WarningLineParticle>(
             Projectile.Center - Vector2.UnitY * warningLength + Vector2.UnitY * 36f,
             Vector2.Zero);
-        if (line == null) return;
         line.lineRotation = MathHelper.Pi;
         line.lineLength = warningLength;
         line.lineWidth = 28f;
@@ -687,16 +685,10 @@ public class KingSlimeUltimateImpactEffect : ModProjectile {
         SoundEngine.PlaySound(KingSlimeSound.Impact, Projectile.Center);
         Main.instance.CameraModifiers.Add(new PunchCameraModifier(
             Projectile.Center, -Vector2.UnitY, 19f, 12f, 26));
-        ParticleManager.Instance?.NewParticle<ExplosionEffectParticle>(
+        ParticleManager.Instance.NewParticle<ExplosionEffectParticle>(
             Projectile.Center, Vector2.Zero,
             scale: 720f / ModAsset.ExplosionSpread.Value.Width * 1.15f);
-        TwistCircleParticle twist = ParticleManager.Instance?.NewParticle<TwistCircleParticle>(
-            Projectile.Center, Vector2.Zero);
-        if (twist != null) {
-            twist.size = 18f;
-            twist.time = 46;
-            twist.strength = 0.38f;
-        }
+        TwistCircleParticle.Spawn(Projectile.Center, 18f, 46, 0.38f);
         for (int i = 0; i < 90; i++) {
             Vector2 direction = Main.rand.NextVector2Unit();
             Dust spark = Dust.NewDustPerfect(Projectile.Center + direction *
@@ -707,11 +699,10 @@ public class KingSlimeUltimateImpactEffect : ModProjectile {
         }
         for (int i = 0; i < 32; i++) {
             Vector2 direction = Main.rand.NextVector2Unit();
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 Projectile.Center + direction * Main.rand.NextFloat(10f, 95f),
                 direction * Main.rand.NextFloat(3f, 9f), alpha: 0f,
                 scale: Main.rand.NextFloat(2f, 3.4f));
-            if (smoke == null) continue;
             smoke.color = new Color(205, 190, 170);
             smoke.startOpacity = 0.7f;
         }

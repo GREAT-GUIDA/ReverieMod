@@ -50,6 +50,23 @@ public class RoarEffectParticle : EffectParticle {
     }
 }
 
+public class RoarLineEffectParticle : EffectParticle {
+    protected override void SetupParticleDefaults() {
+        timeLeft = maxTimeLeft = 36;
+        drawLayer = ParticleLayer.BeforeProjectiles;
+        cutOffscreen = true;
+    }
+
+    protected override void SetupEffectLayers() {
+        AddEffectLayer(new EffectParticleLayer(ModAsset.TexRoarLine.Value,
+            BlendState.AlphaBlend) {
+            BaseOpacity = 0.2f,
+            BaseColor = new Color(100,80,120),
+            CustomScaleCurve = t => MathHelper.Lerp(0.2f, 60f, t)
+        });
+    }
+}
+
 // A bright ring collapses into its center as energy is absorbed.
 public class AbsorptionEffectParticle : EffectParticle {
     protected override void SetupParticleDefaults() {
@@ -72,10 +89,9 @@ public class AbsorptionEffectParticle : EffectParticle {
         AddEffectLayer(new EffectParticleLayer(ModAsset.ExplosionSpread.Value,
             BlendState.Additive) {
             BaseColor = new Color(125, 205, 255),
-            CustomScaleCurve = t => MathHelper.Lerp(2.85f, 0.16f,
-                GuidaUtils.Smoothstep(0f, 1f, t)),
+            CustomScaleCurve = t => MathHelper.Lerp(2.85f, 0.16f, t),
             CustomOpacityCurve = t =>
-                (0.05f + 0.44f * GuidaUtils.Smoothstep(0f, 0.82f, t)) *
+                (0.44f * Easing.QuadIn(t)) *
                 GuidaUtils.Smoothstep(1f, 0.9f, t),
             CustomRotationCurve = t => t * 0.32f
         });

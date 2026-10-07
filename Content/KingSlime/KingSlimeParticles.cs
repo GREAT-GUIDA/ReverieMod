@@ -8,6 +8,33 @@ using Terraria.ID;
 
 namespace ReverieMod.Content.KingSlime;
 
+public class KingSlimeBodyTwistParticle : Particle, ITwistParticle {
+    public Vector2 bodyScale;
+    public float opacity;
+
+    public bool DrawBehindNPCs => true;
+    public float TwistOpacity => opacity;
+    public override Texture2D Texture => ModAsset.KingSlimeBodyTwist.Value;
+
+    public override void SetDefaults() {
+        base.SetDefaults();
+        drawLayer = ParticleLayer.Twist;
+        timeLeft = 2;
+    }
+
+    public override void AI() {
+        if (!HasValidHolder() || --timeLeft <= 0) Kill();
+    }
+
+    public void DrawTwist(SpriteBatch spriteBatch) {
+        spriteBatch.Draw(Texture, position - Main.screenPosition,
+            new Rectangle(0, frame * 120, 174, 120), Color.White * opacity,
+            rotation, new Vector2(87f, 120f), bodyScale, SpriteEffects.None, 0f);
+    }
+
+    public override bool PreDraw(SpriteBatch spriteBatch, Color lightColor) => false;
+}
+
 
 // The boss places and sustains its simple props; chests alone animate open.
 public class KingSlimePropParticle : Particle {
@@ -46,12 +73,76 @@ public class KingSlimePropParticle : Particle {
 }
 
 
-// The discarded shortsword bounces once, then falls through terrain.
-public class KingSlimeCopperShortswordParticle : Particle {
+// Shared release, ground sweep, two rebounds, and fade for discarded items.
+public abstract class KingSlimeDroppedItemParticle : Particle {
+    private int bounceCount;
+
+    protected abstract Vector2 GroundContactPoint { get; }
+    protected virtual float GroundHalfWidth => 5f;
+
+    protected Vector2 RotatedLowerEnd(float reach, float angle) {
+        Vector2 offset = new Vector2(0f, reach).RotatedBy(angle);
+        return position + (offset.Y >= 0f ? offset : -offset);
+    }
+
+    protected void BeginDrop(Vector2 throwVelocity, float spin) {
+        velocity = throwVelocity;
+        angVelocity = spin;
+        timeLeft = maxTimeLeft = 125;
+    }
+
+    protected void UpdateDrop() {
+        oldPosition = position;
+        velocity.X *= 0.992f;
+        velocity.Y = Math.Min(velocity.Y + 0.34f, 13f);
+        if (bounceCount < 2 && velocity.Y > 0f && TryGroundContact(out float fraction)) {
+            position += velocity * fraction;
+            velocity.X *= 0.72f;
+            velocity.Y = bounceCount == 0
+                ? -Math.Min(2.7f, Math.Max(1.2f, velocity.Y * 0.27f))
+                : -Math.Min(1.8f, Math.Max(1.1f, velocity.Y * 0.5f));
+            angVelocity *= -0.6f;
+            bounceCount++;
+        }
+        else position += velocity;
+
+        RotateDropped();
+        if (timeLeft < 22) alpha = MathHelper.Clamp(timeLeft / 22f, 0f, 1f);
+        if (--timeLeft <= 0) Kill();
+    }
+
+    protected virtual void RotateDropped() => rotation += angVelocity;
+
+    private bool TryGroundContact(out float fraction) {
+        fraction = 1f;
+        Vector2 contact = GroundContactPoint;
+        float nextY = contact.Y + velocity.Y;
+        for (int y = (int)Math.Floor(contact.Y / 16f);
+             y <= (int)Math.Floor(nextY / 16f); y++) {
+            float tileTop = y * 16f;
+            if (tileTop < contact.Y - 0.01f || tileTop > nextY) continue;
+            float step = (tileTop - contact.Y) / velocity.Y;
+            float contactX = contact.X + velocity.X * step;
+            for (int x = (int)Math.Floor((contactX - GroundHalfWidth) / 16f);
+                 x <= (int)Math.Floor((contactX + GroundHalfWidth) / 16f); x++) {
+                if (!WorldGen.InWorld(x, y, 1) || Main.tile[x, y] == null ||
+                    !WorldGen.SolidTile(x, y)) continue;
+                fraction = step;
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+
+// The discarded shortsword bounces twice, then falls through terrain.
+public class KingSlimeCopperShortswordParticle : KingSlimeDroppedItemParticle {
     public bool held = true;
-    private bool bounced;
 
     public override Texture2D Texture => ModAsset.KingSlimeCopperShortsword.Value;
+    protected override Vector2 GroundContactPoint =>
+        RotatedLowerEnd(16f * scale, rotation);
 
     public override void SetDefaults() {
         base.SetDefaults();
@@ -64,9 +155,7 @@ public class KingSlimeCopperShortswordParticle : Particle {
     public void Release(Vector2 throwVelocity) {
         if (!held) return;
         held = false;
-        velocity = throwVelocity;
-        angVelocity = throwVelocity.X >= 0f ? 0.11f : -0.11f;
-        timeLeft = maxTimeLeft = 110;
+        BeginDrop(throwVelocity, throwVelocity.X >= 0f ? 0.11f : -0.11f);
     }
 
     public override void AI() {
@@ -78,39 +167,21 @@ public class KingSlimeCopperShortswordParticle : Particle {
             Release(new Vector2(0f, -2f));
         }
 
-        oldPosition = position;
-        velocity.X *= 0.992f;
-        velocity.Y = Math.Min(velocity.Y + 0.34f, 13f);
-        if (!bounced && velocity.Y > 0f) {
-            Vector2 lowerEnd = position + new Vector2(0f, 16f * scale).RotatedBy(rotation);
-            Vector2 next = lowerEnd + velocity;
-            int tileY = (int)Math.Floor(next.Y / 16f);
-            int tileX = (int)Math.Floor(next.X / 16f);
-            if (WorldGen.InWorld(tileX, tileY, 1) && WorldGen.SolidTile(tileX, tileY)) {
-                velocity.Y = -Math.Min(2.6f, velocity.Y * 0.26f);
-                velocity.X *= 0.72f;
-                angVelocity *= -0.6f;
-                bounced = true;
-            }
-        }
-        position += velocity;
-        rotation += angVelocity;
-        if (timeLeft < 22) alpha = MathHelper.Clamp(timeLeft / 22f, 0f, 1f);
-        if (--timeLeft <= 0) Kill();
+        UpdateDrop();
     }
 }
 
 
-// The crown follows the boss with an asymmetric spring and falls on death.
-public class KingSlimeCrownParticle : Particle {
+// The crown follows the boss with an asymmetric spring and bounces twice when released.
+public class KingSlimeCrownParticle : KingSlimeDroppedItemParticle {
     private Vector2 previousAnchor;
     private bool initialized;
     private bool released;
-    private bool bounced;
-    private bool settled;
 
     public override Texture2D Texture => ModAsset.Crown.Value;
     public override Vector2 Origin => new(Texture.Width * 0.5f, Texture.Height - 4f);
+    protected override Vector2 GroundContactPoint => position + Vector2.UnitY * 3f;
+    protected override float GroundHalfWidth => 18f;
 
     public override void SetDefaults() {
         base.SetDefaults();
@@ -186,10 +257,8 @@ public class KingSlimeCrownParticle : Particle {
     public void Release() {
         if (released) return;
         released = true;
-        velocity.X += Main.rand.NextFloat(-0.9f, 0.9f);
-        angVelocity += Main.rand.NextFloat(-0.045f, 0.045f);
-        timeLeft = 180;
-        maxTimeLeft = timeLeft;
+        BeginDrop(velocity + new Vector2(Main.rand.NextFloat(-0.9f, 0.9f), 0f),
+            angVelocity + Main.rand.NextFloat(-0.045f, 0.045f));
     }
 
     public override void AI() {
@@ -201,34 +270,7 @@ public class KingSlimeCrownParticle : Particle {
             }
         }
 
-        if (settled && Collision.TileCollision(position - new Vector2(18f, 9f),
-                new Vector2(0f, 1f), 36, 12).Y > 0.9f)
-            settled = false;
-        if (!settled) {
-            velocity.X *= 0.992f;
-            velocity.Y = Math.Min(velocity.Y + 0.32f, 13f);
-            Vector2 probe = position - new Vector2(18f, 9f);
-            Vector2 moved = Collision.TileCollision(probe, velocity, 36, 12);
-            position += moved;
-            if (Math.Abs(moved.X - velocity.X) > 0.01f) velocity.X *= -0.45f;
-            if (velocity.Y > 0f && moved.Y < velocity.Y - 0.01f) {
-                if (bounced || velocity.Y < 1.2f) {
-                    settled = true;
-                    velocity = Vector2.Zero;
-                }
-                else {
-                    velocity.Y = -Math.Min(2.8f, velocity.Y * 0.27f);
-                    angVelocity *= -0.55f;
-                    bounced = true;
-                }
-            }
-            rotation += angVelocity;
-            angVelocity *= 0.985f;
-        }
-        else rotation = MathHelper.Lerp(rotation, 0f, 0.12f);
-
-        if (timeLeft < 28) alpha = MathHelper.Clamp(timeLeft / 28f, 0f, 1f);
-        if (--timeLeft <= 0) Kill();
+        UpdateDrop();
     }
 }
 
@@ -299,8 +341,7 @@ public class KingSlimeGrappleParticle : Particle {
 
 
 // The hammer handle stretches to its head; the released hammer tumbles as one particle.
-public class KingSlimeHammerParticle : Particle {
-    private bool bounced;
+public class KingSlimeHammerParticle : KingSlimeDroppedItemParticle {
     private Vector2 looseHandleOffset;
 
     public bool held = true;
@@ -310,6 +351,8 @@ public class KingSlimeHammerParticle : Particle {
     public float starRotation;
 
     public override Texture2D Texture => ModAsset.KingSlimeHammerHead.Value;
+    protected override Vector2 GroundContactPoint =>
+        RotatedLowerEnd(Texture.Height * scale * 0.4f, headRotation);
 
     public override void SetDefaults() {
         base.SetDefaults();
@@ -323,10 +366,8 @@ public class KingSlimeHammerParticle : Particle {
         if (!held) return;
         held = false;
         looseHandleOffset = grip - position;
-        velocity = throwVelocity;
-        angVelocity = throwVelocity.X >= 0f ? 0.09f : -0.09f;
         starOpacity = 0f;
-        timeLeft = maxTimeLeft = 115;
+        BeginDrop(throwVelocity, throwVelocity.X >= 0f ? 0.09f : -0.09f);
     }
 
     public override void AI() {
@@ -338,25 +379,13 @@ public class KingSlimeHammerParticle : Particle {
             Release(new Vector2(0f, -2f));
         }
 
-        velocity.X *= 0.992f;
-        velocity.Y = Math.Min(velocity.Y + 0.34f, 13f);
-        if (!bounced && velocity.Y > 0f) {
-            Vector2 next = position + velocity;
-            int tileX = (int)(next.X / 16f);
-            int tileY = (int)((next.Y + Texture.Height * scale * 0.4f) / 16f);
-            if (WorldGen.InWorld(tileX, tileY, 1) && WorldGen.SolidTile(tileX, tileY)) {
-                velocity.Y = -Math.Min(2.6f, velocity.Y * 0.26f);
-                velocity.X *= 0.72f;
-                angVelocity *= -0.6f;
-                bounced = true;
-            }
-        }
-        position += velocity;
+        UpdateDrop();
+    }
+
+    protected override void RotateDropped() {
         headRotation += angVelocity;
         looseHandleOffset = looseHandleOffset.RotatedBy(angVelocity);
         grip = position + looseHandleOffset;
-        if (timeLeft < 22) alpha = MathHelper.Clamp(timeLeft / 22f, 0f, 1f);
-        if (--timeLeft <= 0) Kill();
     }
 
     public override bool PreDraw(SpriteBatch spriteBatch, Color lightColor) {
@@ -388,12 +417,11 @@ public class KingSlimeHammerParticle : Particle {
 }
 
 
-// The discarded potion falls through terrain and fades after one bounce.
-public class KingSlimePotionParticle : Particle {
+// The discarded potion falls through terrain and fades after two bounces.
+public class KingSlimePotionParticle : KingSlimeDroppedItemParticle {
     public bool held = true;
     public bool empty;
     public int variant;
-    private bool bounced;
 
     public override Texture2D Texture => variant switch {
         1 => ModAsset.KingSlimePotionYellow.Value,
@@ -406,6 +434,10 @@ public class KingSlimePotionParticle : Particle {
         empty ? Texture.Height / 2 : 0, Texture.Width, Texture.Height / 2);
 
     public override Vector2 Origin => new(Texture.Width * 0.5f, Texture.Height * 0.25f);
+    protected override Vector2 GroundContactPoint =>
+        RotatedLowerEnd(SourceRectangle.Value.Height * scale * 0.5f, rotation) +
+        Vector2.UnitY * 2f;
+    protected override float GroundHalfWidth => 6f;
 
     public override void SetDefaults() {
         base.SetDefaults();
@@ -420,10 +452,7 @@ public class KingSlimePotionParticle : Particle {
         if (!held) return;
         held = false;
         empty = true;
-        velocity = throwVelocity;
-        angVelocity = Math.Sign(throwVelocity.X) * 0.11f;
-        timeLeft = 120;
-        maxTimeLeft = timeLeft;
+        BeginDrop(throwVelocity, Math.Sign(throwVelocity.X) * 0.11f);
     }
 
     public override void AI() {
@@ -436,45 +465,7 @@ public class KingSlimePotionParticle : Particle {
             }
         }
 
-        oldPosition = position;
-        velocity.X *= 0.992f;
-        velocity.Y = Math.Min(velocity.Y + 0.32f, 13f);
-        if (!bounced && velocity.Y > 0f) {
-            Vector2 lowerEnd = position + new Vector2(0f,
-                SourceRectangle.Value.Height * scale * 0.5f).RotatedBy(rotation);
-            float previousBottom = lowerEnd.Y + 2f;
-            float nextBottom = previousBottom + velocity.Y;
-            bool hitFullBlock = false;
-            float contactFraction = 1f;
-            for (int y = (int)Math.Floor(previousBottom / 16f);
-                 y <= (int)Math.Floor(nextBottom / 16f) && !hitFullBlock; y++) {
-                float tileTop = y * 16f;
-                if (tileTop < previousBottom - 0.01f || tileTop > nextBottom) continue;
-                float fraction = (tileTop - previousBottom) / velocity.Y;
-                float contactX = lowerEnd.X + velocity.X * fraction;
-                for (int x = (int)Math.Floor((contactX - 6f) / 16f);
-                     x <= (int)Math.Floor((contactX + 6f) / 16f); x++) {
-                    if (!WorldGen.InWorld(x, y, 1) || Main.tile[x, y] == null ||
-                        !WorldGen.SolidTile(x, y)) continue;
-                    contactFraction = fraction;
-                    hitFullBlock = true;
-                    break;
-                }
-            }
-            if (hitFullBlock) {
-                position += velocity * contactFraction;
-                velocity.X *= 0.75f;
-                velocity.Y = -Math.Min(2.8f, velocity.Y * 0.28f);
-                angVelocity *= -0.65f;
-                bounced = true;
-            }
-            else position += velocity;
-        }
-        else position += velocity;
-
-        rotation += angVelocity;
-        if (timeLeft < 24) alpha = MathHelper.Clamp(timeLeft / 24f, 0f, 1f);
-        if (--timeLeft <= 0) Kill();
+        UpdateDrop();
     }
 }
 
@@ -545,16 +536,22 @@ public class KingSlimeRopeParticle : Particle {
 }
 
 
-// The released spear tumbles, bounces once, then falls through terrain.
-public class KingSlimeSpearParticle : Particle {
+// The released spear tumbles, bounces twice, then falls through terrain.
+public class KingSlimeSpearParticle : KingSlimeDroppedItemParticle {
     public bool held = true;
     public float tipStarOpacity;
     public float tipStarRotation;
     public bool tipRushStreak;
-    private bool bounced;
 
     public override Texture2D Texture => ModAsset.KingSlimeSpear.Value;
     public Vector2 TipPosition => position + new Vector2(17f, -18f).RotatedBy(rotation) * scale;
+    protected override Vector2 GroundContactPoint {
+        get {
+            Vector2 tail = position + new Vector2(-15f, 15f).RotatedBy(rotation) * scale;
+            Vector2 lowerEnd = TipPosition.Y > tail.Y ? TipPosition : tail;
+            return lowerEnd + Vector2.UnitY * 5f;
+        }
+    }
     public Texture2D RushStreakTexture => TextureAssets.Extra[ExtrasID.ThePerfectGlow].Value;
     public float RushStreakRotation => rotation - MathHelper.PiOver4 - MathHelper.PiOver2;
     public Vector2 RushStreakScale => new Vector2(1.35f, 3.4f);
@@ -571,10 +568,7 @@ public class KingSlimeSpearParticle : Particle {
     public void Release(Vector2 throwVelocity) {
         if (!held) return;
         held = false;
-        velocity = throwVelocity;
-        angVelocity = (throwVelocity.X >= 0f ? 1f : -1f) * 0.09f;
-        timeLeft = 115;
-        maxTimeLeft = timeLeft;
+        BeginDrop(throwVelocity, (throwVelocity.X >= 0f ? 1f : -1f) * 0.09f);
     }
 
     public override void AI() {
@@ -588,51 +582,7 @@ public class KingSlimeSpearParticle : Particle {
             }
         }
 
-        oldPosition = position;
-        velocity.X *= 0.992f;
-        velocity.Y = Math.Min(velocity.Y + 0.34f, 13f);
-
-        if (!bounced && velocity.Y > 0f) {
-            Vector2 tip = TipPosition;
-            Vector2 tail = position + new Vector2(-15f, 15f).RotatedBy(rotation) * scale;
-            Vector2 lowerEnd = tip.Y > tail.Y ? tip : tail;
-            float previousBottom = lowerEnd.Y + 5f;
-            float nextBottom = previousBottom + velocity.Y;
-            // SolidTile excludes platforms, half blocks and slopes. Sweep the lower
-            // end through the fall so only a complete block can cause the one bounce.
-            bool hitFullBlock = false;
-            float contactFraction = 1f;
-            for (int y = (int)Math.Floor(previousBottom / 16f);
-                 y <= (int)Math.Floor(nextBottom / 16f) && !hitFullBlock; y++) {
-                float tileTop = y * 16f;
-                if (tileTop < previousBottom - 0.01f || tileTop > nextBottom) continue;
-                float fraction = (tileTop - previousBottom) / velocity.Y;
-                float contactX = lowerEnd.X + velocity.X * fraction;
-                int firstX = (int)Math.Floor((contactX - 5f) / 16f);
-                int lastX = (int)Math.Floor((contactX + 5f) / 16f);
-                for (int x = firstX; x <= lastX; x++) {
-                    if (!WorldGen.InWorld(x, y, 1) || Main.tile[x, y] == null ||
-                        !WorldGen.SolidTile(x, y)) continue;
-                    contactFraction = fraction;
-                    hitFullBlock = true;
-                    break;
-                }
-            }
-
-            if (hitFullBlock) {
-                position += velocity * contactFraction;
-                velocity.X *= 0.72f;
-                velocity.Y = -Math.Min(2.7f, velocity.Y * 0.26f);
-                angVelocity *= -0.65f;
-                bounced = true;
-            }
-            else position += velocity;
-        }
-        else position += velocity;
-
-        rotation += angVelocity;
-        if (timeLeft < 22) alpha = MathHelper.Clamp(timeLeft / 22f, 0f, 1f);
-        if (--timeLeft <= 0) Kill();
+        UpdateDrop();
     }
 
     public override void PostDraw(SpriteBatch spriteBatch, Color lightColor) {
@@ -662,11 +612,10 @@ public class KingSlimeSpearParticle : Particle {
 }
 
 
-// Both wands are held by the boss, then make one small bounce on full blocks.
-public class KingSlimeStaffParticle : Particle {
+// Both wands are held by the boss, then make two small bounces on full blocks.
+public class KingSlimeStaffParticle : KingSlimeDroppedItemParticle {
     public bool summoning;
     public bool held = true;
-    private bool bounced;
 
     public override Texture2D Texture => summoning
         ? ModAsset.KingSlimeStaff.Value : ModAsset.KingSlimeFireWand.Value;
@@ -674,6 +623,8 @@ public class KingSlimeStaffParticle : Particle {
         ? spriteDirection < 0 ? new Vector2(Texture.Width - 3f, Texture.Height - 5f)
             : new Vector2(3f, Texture.Height - 5f)
         : base.Origin;
+    protected override Vector2 GroundContactPoint =>
+        RotatedLowerEnd((summoning ? 8f : 13f) * scale, rotation);
 
     public override void SetDefaults() {
         base.SetDefaults();
@@ -686,9 +637,7 @@ public class KingSlimeStaffParticle : Particle {
     public void Release(Vector2 throwVelocity) {
         if (!held) return;
         held = false;
-        velocity = throwVelocity;
-        angVelocity = throwVelocity.X >= 0f ? 0.09f : -0.09f;
-        timeLeft = maxTimeLeft = 105;
+        BeginDrop(throwVelocity, throwVelocity.X >= 0f ? 0.09f : -0.09f);
     }
 
     public override void AI() {
@@ -700,39 +649,22 @@ public class KingSlimeStaffParticle : Particle {
             Release(new Vector2(0f, -2f));
         }
 
-        oldPosition = position;
-        velocity.X *= 0.992f;
-        velocity.Y = Math.Min(velocity.Y + 0.34f, 13f);
-        if (!bounced && velocity.Y > 0f) {
-            Vector2 next = position + velocity +
-                Vector2.UnitY * (summoning ? 8f : 13f) * scale;
-            int x = (int)Math.Floor(next.X / 16f);
-            int y = (int)Math.Floor(next.Y / 16f);
-            if (WorldGen.InWorld(x, y, 1) && WorldGen.SolidTile(x, y)) {
-                velocity.Y = -Math.Min(2.5f, velocity.Y * 0.25f);
-                velocity.X *= 0.72f;
-                angVelocity *= -0.6f;
-                bounced = true;
-            }
-        }
-        position += velocity;
-        rotation += angVelocity;
-        if (timeLeft < 22) alpha = MathHelper.Clamp(timeLeft / 22f, 0f, 1f);
-        if (--timeLeft <= 0) Kill();
+        UpdateDrop();
     }
 }
 
 
-// The released umbrella bounces once on a full block, then falls through terrain.
-public class KingSlimeUmbrellaParticle : Particle {
+// The released umbrella bounces twice on a full block, then falls through terrain.
+public class KingSlimeUmbrellaParticle : KingSlimeDroppedItemParticle {
     public bool held = true;
     public float flutter;
-    private bool bounced;
 
     public override Texture2D Texture => ModAsset.KingSlimeUmbrella.Value;
     public override Rectangle? SourceRectangle =>
         new Rectangle(0, frame * (Texture.Height / 3), Texture.Width, Texture.Height / 3);
     public override Vector2 Origin => new(Texture.Width * 0.5f, Texture.Height / 6f);
+    protected override Vector2 GroundContactPoint =>
+        RotatedLowerEnd(25f * scale, rotation) + Vector2.UnitY * 3f;
 
     public override void SetDefaults() {
         base.SetDefaults();
@@ -749,9 +681,7 @@ public class KingSlimeUmbrellaParticle : Particle {
         held = false;
         frame = 2;
         flutter = 0f;
-        velocity = throwVelocity;
-        angVelocity = (throwVelocity.X >= 0f ? 1f : -1f) * 0.10f;
-        timeLeft = maxTimeLeft = 110;
+        BeginDrop(throwVelocity, (throwVelocity.X >= 0f ? 1f : -1f) * 0.10f);
     }
 
     public override void AI() {
@@ -763,45 +693,7 @@ public class KingSlimeUmbrellaParticle : Particle {
             Release(new Vector2(0f, -2f));
         }
 
-        velocity.X *= 0.991f;
-        velocity.Y = Math.Min(velocity.Y + 0.34f, 13f);
-        if (!bounced && velocity.Y > 0f) {
-            Vector2 top = position + new Vector2(0f, -25f * scale).RotatedBy(rotation);
-            Vector2 bottom = position + new Vector2(0f, 25f * scale).RotatedBy(rotation);
-            Vector2 lowerEnd = top.Y > bottom.Y ? top : bottom;
-            float previousBottom = lowerEnd.Y + 3f;
-            float nextBottom = previousBottom + velocity.Y;
-            bool hitFullBlock = false;
-            float contactFraction = 1f;
-            for (int y = (int)Math.Floor(previousBottom / 16f);
-                 y <= (int)Math.Floor(nextBottom / 16f) && !hitFullBlock; y++) {
-                float tileTop = y * 16f;
-                if (tileTop < previousBottom - 0.01f || tileTop > nextBottom) continue;
-                float fraction = (tileTop - previousBottom) / velocity.Y;
-                float contactX = lowerEnd.X + velocity.X * fraction;
-                for (int x = (int)Math.Floor((contactX - 5f) / 16f);
-                     x <= (int)Math.Floor((contactX + 5f) / 16f); x++) {
-                    if (!WorldGen.InWorld(x, y, 1) || Main.tile[x, y] == null ||
-                        !WorldGen.SolidTile(x, y)) continue;
-                    contactFraction = fraction;
-                    hitFullBlock = true;
-                    break;
-                }
-            }
-            if (hitFullBlock) {
-                position += velocity * contactFraction;
-                velocity.X *= 0.72f;
-                velocity.Y = -Math.Min(2.6f, velocity.Y * 0.26f);
-                angVelocity *= -0.55f;
-                bounced = true;
-            }
-            else position += velocity;
-        }
-        else position += velocity;
-
-        rotation += angVelocity;
-        if (timeLeft < 22) alpha = MathHelper.Clamp(timeLeft / 22f, 0f, 1f);
-        if (--timeLeft <= 0) Kill();
+        UpdateDrop();
     }
 
     public override void Draw(SpriteBatch spriteBatch, Color lightColor) {
@@ -818,7 +710,7 @@ public class KingSlimeGelSplashParticle : Particle {
     public float growth = 0.025f;
     public float opacity = 0.72f;
 
-    public override Texture2D Texture => ModAsset.KingSlimeGelSplashCircle.Value;
+    public override Texture2D Texture => ModAsset.TexSplashCircle.Value;
 
     public override void SetDefaults() {
         base.SetDefaults();

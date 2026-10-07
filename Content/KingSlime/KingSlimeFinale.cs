@@ -3,11 +3,13 @@ using System.IO;
 using GuidaSharedCode;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using ReverieMod.Content;
 using ReverieMod.Content.Particles;
 using Terraria;
 using Terraria.Audio;
 using Terraria.ID;
 using Terraria.ModLoader;
+using Terraria.Localization;
 using Terraria.Graphics.CameraModifiers;
 
 namespace ReverieMod.Content.KingSlime;
@@ -22,9 +24,8 @@ public partial class KingSlime {
     private int ultimateLeg = -1;
     private int ultimateShurikens;
     private TrailParticle ultimateTrail;
-    private UltimateDarknessParticle ultimateDarkness;
+    private ScreenMaskParticle ultimateDarkness;
     private float ultimateFlareBoost;
-    private float ultimateReach;
     private Vector2 cinematicCameraPoint;
     private float introCameraY;
     private bool cinematicCameraInitialized;
@@ -34,24 +35,30 @@ public partial class KingSlime {
     private Vector2 deathCameraEnd;
 
     private void WriteUltimateState(BinaryWriter writer) {
-        writer.Write(ultimateUsed);
         writer.Write(ultimateFocusMask);
-        foreach (Vector2 focus in ultimateFocus) {
-            writer.Write(focus.X);
-            writer.Write(focus.Y);
+        for (int i = 0; i < ultimateFocus.Length; i++) {
+            if ((ultimateFocusMask & (1 << i)) == 0) continue;
+            writer.Write(ultimateFocus[i].X);
+            writer.Write(ultimateFocus[i].Y);
         }
-        writer.Write(ultimateImpact.X);
-        writer.Write(ultimateImpact.Y);
-        writer.Write(ultimateReach);
+        if ((ultimateFocusMask & (1 << 6)) != 0) {
+            writer.Write(ultimateImpact.X);
+            writer.Write(ultimateImpact.Y);
+        }
     }
 
-    private void ReadUltimateState(BinaryReader reader) {
-        ultimateUsed = reader.ReadBoolean();
+    private void ReadUltimateState(BinaryReader reader, bool active) {
+        if (!active) {
+            ultimateFocusMask = 0;
+            ultimateImpact = Vector2.Zero;
+            return;
+        }
         ultimateFocusMask = reader.ReadByte();
         for (int i = 0; i < ultimateFocus.Length; i++)
-            ultimateFocus[i] = new Vector2(reader.ReadSingle(), reader.ReadSingle());
-        ultimateImpact = new Vector2(reader.ReadSingle(), reader.ReadSingle());
-        ultimateReach = reader.ReadSingle();
+            ultimateFocus[i] = (ultimateFocusMask & (1 << i)) != 0
+                ? new Vector2(reader.ReadSingle(), reader.ReadSingle()) : Vector2.Zero;
+        ultimateImpact = (ultimateFocusMask & (1 << 6)) != 0
+            ? new Vector2(reader.ReadSingle(), reader.ReadSingle()) : Vector2.Zero;
     }
 
     private void UpdateCinematicCamera() {
@@ -103,10 +110,6 @@ public partial class KingSlime {
         grounded = false;
         NPC.localAI[0] = 1f;
 
-        if (ultimateReach <= 0f && Main.netMode != NetmodeID.MultiplayerClient) {
-            ultimateReach = 820f;
-            NPC.netUpdate = true;
-        }
         CaptureUltimateFocus(target);
 
         if (Main.netMode != NetmodeID.Server) {
@@ -123,16 +126,9 @@ public partial class KingSlime {
             if (Main.netMode != NetmodeID.Server &&
                 (PassedTime(60f) || PassedTime(120f))) {
                 SoundEngine.PlaySound(KingSlimeSound.Cast, NPC.Center);
-                ParticleManager.Instance?.NewParticle<AbsorptionEffectParticle>(NPC.Center,
+                ParticleManager.Instance.NewParticle<AbsorptionEffectParticle>(NPC.Center,
                     Vector2.Zero, scale: 1.18f);
-                TwistCircleParticle pulse = ParticleManager.Instance?
-                    .NewParticle<TwistCircleParticle>(NPC.Center, Vector2.Zero);
-                if (pulse != null) {
-                    pulse.size = 9f;
-                    pulse.time = 36;
-                    pulse.strength = 0.24f;
-                    pulse.inverse = true;
-                }
+                TwistCircleParticle.Spawn(NPC.Center, 9f, 36, 0.24f, inverse: true);
             }
             return;
         }
@@ -207,8 +203,6 @@ public partial class KingSlime {
     private void RunUltimateDash(int leg) {
         if (!TryUltimateRoute(leg, out Vector2 start, out Vector2 end)) return;
         float begin = UltimateDashBegin(leg);
-        if (PassedTime(begin + 4f))
-            SoundEngine.PlaySound(KingSlimeSound.ItemUse, NPC.Center);
         if (ultimateLeg != leg) {
             ultimateLeg = leg;
             ultimateTrail = null;
@@ -217,9 +211,10 @@ public partial class KingSlime {
             NPC.Center = start;
             SpawnTeleportDust(NPC.Center, true);
             SoundEngine.PlaySound(KingSlimeSound.Teleport, NPC.Center);
+            KingSlimeSound.PlayRush(Vector2.Lerp(start, end, 0.5f));
             if (Main.netMode != NetmodeID.MultiplayerClient) NPC.netUpdate = true;
             if (Main.netMode != NetmodeID.Server)
-                ParticleManager.Instance?.NewParticle<TwistCircleParticle>(NPC.Center, Vector2.Zero);
+                TwistCircleParticle.Spawn(NPC.Center);
         }
         float t = MathHelper.Clamp((Timer - begin) / 39f, 0f, 1f);
         float progress = GuidaUtils.Smoothstep(0f, 1f, t);
@@ -278,11 +273,10 @@ public partial class KingSlime {
             firstPreparation ? 0 : 4;
         if (!TryUltimateRoute(leg, out Vector2 start, out Vector2 end)) return;
         if (spearParticle?.IsAlive != true) {
-            spearParticle = ParticleManager.Instance?.NewParticle<KingSlimeSpearParticle>(
+            spearParticle = ParticleManager.Instance.NewParticle<KingSlimeSpearParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-            spearParticle?.SetHolder(NPC);
+            spearParticle.SetHolder(NPC);
         }
-        if (spearParticle == null) return;
 
         float aimAngle = (end - start).ToRotation();
         bool rushing = firstDashes || secondDashes;
@@ -320,11 +314,11 @@ public partial class KingSlime {
 
     private bool TryUltimateRoute(int leg, out Vector2 start, out Vector2 end) {
         start = end = Vector2.Zero;
-        if (leg < 0 || leg >= 13 || ultimateReach <= 0f) return false;
+        if (leg < 0 || leg >= 13) return false;
         int group = UltimateFocusGroup(leg);
         if ((ultimateFocusMask & (1 << group)) == 0) return false;
         Vector2 c = ultimateFocus[group];
-        float reach = ultimateReach;
+        float reach = 820f;
         float diagonal = reach * 1.42f;
         float corner = reach * 0.71f;
         (Vector2 a, Vector2 b) = leg switch {
@@ -377,16 +371,14 @@ public partial class KingSlime {
                 !TryUltimateRoute(leg, out Vector2 start, out Vector2 end)) continue;
             ultimateWarningMask |= bit;
             Vector2 direction = Vector2.Normalize(end - start);
-            WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+            WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
                 start - direction * 25f, Vector2.Zero);
-            if (warning != null) {
-                StyleBodyWarning(warning);
-                if (Math.Abs(direction.Y) > Math.Abs(direction.X))
-                    StyleVerticalBodyWarning(warning);
-                warning.lineRotation = direction.ToRotation() + MathHelper.PiOver2;
-                warning.lineLength = Vector2.Distance(start, end) + 50f;
-                warning.time = Math.Max(1f, (begin - Timer + 24f) / appliedTempo);
-            }
+            StyleBodyWarning(warning);
+            if (Math.Abs(direction.Y) > Math.Abs(direction.X))
+                StyleVerticalBodyWarning(warning);
+            warning.lineRotation = direction.ToRotation() + MathHelper.PiOver2;
+            warning.lineLength = Vector2.Distance(start, end) + 50f;
+            warning.time = Math.Max(1f, (begin - Timer + 24f) / appliedTempo);
             CreateTeleportWarning(start, begin - Timer);
         }
         if ((ultimateWarningMask & (1 << 13)) == 0 &&
@@ -400,25 +392,31 @@ public partial class KingSlime {
     }
 
     private void SpawnUltimateDarkness() {
-        if (ultimateDarkness?.IsAlive != true)
-            ultimateDarkness = ParticleManager.Instance?
-                .NewParticle<UltimateDarknessParticle>(NPC.Center, Vector2.Zero, alpha: 0f);
-        ultimateDarkness?.Sustain();
+        if (ultimateDarkness?.IsAlive != true) {
+            ultimateDarkness = ParticleManager.Instance
+                .NewParticle<ScreenMaskParticle>(Vector2.Zero, Vector2.Zero, alpha: 0f);
+            ultimateDarkness.drawLayer = ParticleLayer.BeforeNPCs;
+            ultimateDarkness.SetTexture(ModAsset.WarningPixel.Value);
+            ultimateDarkness.color = Color.Black;
+            ultimateDarkness.fadeOutTicks = 30;
+            ultimateDarkness.timeLeft = ultimateDarkness.maxTimeLeft = 31;
+        }
+        ultimateDarkness.alpha = MathHelper.Lerp(ultimateDarkness.alpha, 0.62f, 0.075f);
+        ultimateDarkness.timeLeft = 31;
     }
 
     private void SpawnUltimateChargeParticles() {
         for (int pulse = 12; pulse <= 124; pulse += 16)
             if (PassedTime(pulse))
-                ParticleManager.Instance?.NewParticle<AbsorptionEffectParticle>(
+                ParticleManager.Instance.NewParticle<AbsorptionEffectParticle>(
                     NPC.Center, Vector2.Zero);
 
         // The last streak fades out before the first teleport at tick 180.
         if (Timer >= 132f || (int)(Timer / 2f) == (int)(previousTimer / 2f)) return;
         for (int i = 0; i < (Timer < 72f ? 3 : 5); i++) {
             Vector2 offset = Main.rand.NextVector2CircularEdge(420f, 320f);
-            GlowStreakParticle streak = ParticleManager.Instance?.NewParticle<GlowStreakParticle>(
+            GlowStreakParticle streak = ParticleManager.Instance.NewParticle<GlowStreakParticle>(
                 NPC.Center + offset, -Vector2.Normalize(offset) * Main.rand.NextFloat(8f, 12f));
-            if (streak == null) continue;
             streak.color = new Color(125, 200, 255);
             streak.drawSize = new Vector2(7f, 62f);
             streak.rotation = offset.ToRotation() - MathHelper.PiOver2;
@@ -446,11 +444,10 @@ public partial class KingSlime {
             return;
         }
         if (hammerParticle?.IsAlive != true) {
-            hammerParticle = ParticleManager.Instance?.NewParticle<KingSlimeHammerParticle>(
+            hammerParticle = ParticleManager.Instance.NewParticle<KingSlimeHammerParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f);
-            hammerParticle?.SetHolder(NPC);
+            hammerParticle.SetHolder(NPC);
         }
-        if (hammerParticle == null) return;
         float raise = GuidaUtils.Smoothstep(855f, 890f, Timer);
         float strike = GuidaUtils.Smoothstep(890f, 925f, Timer);
         hammerParticle.grip = NPC.Center + new Vector2(0f, -NPC.height * 0.12f);
@@ -486,7 +483,6 @@ public partial class KingSlime {
     private bool deathFinished;
     private float deathTimer;
     private bool deathBurstCreated;
-    private bool deathSlimesSpawned;
     private bool deathMusicStopped;
     private bool deathOpeningShockCreated;
 
@@ -512,15 +508,12 @@ public partial class KingSlime {
     }
 
     private void WriteDeathState(BinaryWriter writer) {
-        writer.Write(dying);
-        writer.Write(deathFinished);
         writer.Write(deathTimer);
     }
 
-    private void ReadDeathState(BinaryReader reader) {
-        dying = reader.ReadBoolean();
-        deathFinished = reader.ReadBoolean();
-        deathTimer = reader.ReadSingle();
+    private void ReadDeathState(BinaryReader reader, bool active) {
+        dying = active;
+        deathTimer = active ? reader.ReadSingle() : 0f;
     }
 
     private void DeathAnimation() {
@@ -537,7 +530,7 @@ public partial class KingSlime {
         UpdateBodyRotation();
         UpdateBodyPose();
         UpdateCrownPhysics();
-        if (Main.netMode != NetmodeID.Server && deathTimer < 106f)
+        if (Main.netMode != NetmodeID.Server && deathTimer < 126f)
             UpdateInteriorVisuals();
 
         if (deathTimer == 1f) {
@@ -553,34 +546,29 @@ public partial class KingSlime {
         }
         if (Main.netMode != NetmodeID.Server) {
             UpdateCinematicCamera();
-            if (deathTimer < 118f && (int)deathTimer % 7 == 0) {
+            if (deathTimer >= 133f && deathTimer < 138f)
+                ScreenPresentationSystem.ShowDeathBurstFlash();
+            if (deathTimer < 138f && (int)deathTimer % 7 == 0) {
                 for (int i = 0; i < (deathTimer < 55f ? 2 : 3); i++) {
                     Vector2 offset = Main.rand.NextVector2Circular(
                         NPC.width * 0.58f, NPC.height * 0.46f);
-                    KingSlimeGelSplashParticle leak = ParticleManager.Instance?
+                    KingSlimeGelSplashParticle leak = ParticleManager.Instance
                         .NewParticle<KingSlimeGelSplashParticle>(NPC.Center + offset,
                             offset * 0.055f + Main.rand.NextVector2Circular(1f, 1f),
                             scale: Main.rand.NextFloat(0.10f, 0.22f));
-                    if (leak == null) continue;
                     leak.color = Color.Lerp(new Color(95, 165, 255),
                         new Color(185, 225, 255), Main.rand.NextFloat());
                     leak.opacity = Main.rand.NextFloat(0.38f, 0.62f);
                     leak.growth = Main.rand.NextFloat(0.008f, 0.015f);
                     leak.rotation = Main.rand.NextFloat(MathHelper.TwoPi);
-                    TwistCircleParticle ripple = ParticleManager.Instance?
-                        .NewParticle<TwistCircleParticle>(leak.position, Vector2.Zero);
-                    if (ripple != null) {
-                        ripple.size = 1.8f;
-                        ripple.time = 20;
-                        ripple.strength = 0.09f;
-                    }
+                    TwistCircleParticle.Spawn(leak.position, 1.8f, 20, 0.09f);
                 }
                 if ((int)deathTimer % 21 == 0)
                     SoundEngine.PlaySound(KingSlimeSound.GelBurst with {
                         Volume = 0.55f, PitchVariance = 0.12f
                     }, NPC.Center);
             }
-            if (deathTimer < 112f && (int)deathTimer % 3 == 0) {
+            if (deathTimer < 132f && (int)deathTimer % 3 == 0) {
                 Vector2 direction = Main.rand.NextVector2Unit();
                 Dust dust = Dust.NewDustPerfect(NPC.Center + direction *
                     Main.rand.NextFloat(12f, 55f), DustID.t_Slime,
@@ -589,11 +577,10 @@ public partial class KingSlime {
                 dust.noGravity = true;
             }
         }
-        if (deathTimer >= 118f) {
+        if (deathTimer >= 138f) {
             CreateDeathBurst();
-            SpawnDeathSlimes();
         }
-        if (deathTimer < 118f || Main.netMode == NetmodeID.MultiplayerClient) return;
+        if (deathTimer < 142f || Main.netMode == NetmodeID.MultiplayerClient) return;
         deathFinished = true;
         NPC.life = 0;
         NPC.netUpdate = true;
@@ -603,7 +590,7 @@ public partial class KingSlime {
     private void CreateDeathOpeningShock() {
         if (deathOpeningShockCreated) return;
         deathOpeningShockCreated = true;
-        CreateDeathShock(28f, 10f, 42, 0.55f, 2.4f);
+        CreateDeathShock(28f, 8f, 82, 0.95f, 2.4f);
     }
 
     private void CreateDeathShock(float cameraStrength, float waveSize,
@@ -611,14 +598,8 @@ public partial class KingSlime {
         if (Main.netMode == NetmodeID.Server) return;
         SoundEngine.PlaySound(KingSlimeSound.BossDeath, NPC.Center);
         SoundEngine.PlaySound(KingSlimeSound.GelBurst, NPC.Center);
-        TwistCircleParticle twist = ParticleManager.Instance?
-            .NewParticle<TwistCircleParticle>(NPC.Center, Vector2.Zero);
-        if (twist != null) {
-            twist.size = waveSize;
-            twist.time = waveTime;
-            twist.strength = waveStrength;
-        }
-        ParticleManager.Instance?.NewParticle<RoarEffectParticle>(NPC.Center,
+        TwistCircleParticle.Spawn(NPC.Center, waveSize, waveTime, waveStrength);
+        ParticleManager.Instance.NewParticle<RoarEffectParticle>(NPC.Center,
             Vector2.Zero, scale: effectScale);
         Main.instance.CameraModifiers.Add(new PunchCameraModifier(
             NPC.Center, Main.rand.NextVector2Unit(), cameraStrength, 6f, 20,
@@ -629,14 +610,19 @@ public partial class KingSlime {
         if (deathBurstCreated || Main.netMode == NetmodeID.Server) return;
         deathBurstCreated = true;
         ReleaseCrown();
-        CreateDeathShock(40f, 13f, 80, 1f, 2.8f);
+        CreateDeathShock(40f, 8f, 80, 1f, 2.8f);
+        ScreenPresentationSystem.ShowDeathBurstFlash();
+        ScreenPresentationSystem.ShowTitle(180,
+            Language.GetTextValue("Mods.ReverieMod.KingSlimeTitles.Theme"),
+            new Color(78, 171, 233),
+            Language.GetTextValue("Mods.ReverieMod.KingSlimeTitles.Defeated"),
+            new Color(222, 242, 255));
         for (int i = 0; i < 14; i++) {
             Vector2 direction = Main.rand.NextVector2Unit();
-            KingSlimeGelSplashParticle gel = ParticleManager.Instance?
+            KingSlimeGelSplashParticle gel = ParticleManager.Instance
                 .NewParticle<KingSlimeGelSplashParticle>(NPC.Center + direction *
                     Main.rand.NextFloat(0f, 85f), direction * Main.rand.NextFloat(2f, 8f),
                     scale: Main.rand.NextFloat(0.22f, 0.48f));
-            if (gel == null) continue;
             gel.color = Color.Lerp(new Color(75, 140, 255),
                 new Color(175, 225, 255), Main.rand.NextFloat());
             gel.growth = Main.rand.NextFloat(0.018f, 0.040f);
@@ -648,20 +634,4 @@ public partial class KingSlime {
         Splash(70, 8f);
     }
 
-    private void SpawnDeathSlimes() {
-        if (deathSlimesSpawned || Main.netMode == NetmodeID.MultiplayerClient) return;
-        deathSlimesSpawned = true;
-        for (int i = 0; i < 8; i++) {
-            Vector2 direction = (MathHelper.TwoPi * (i + Main.rand.NextFloat(-0.18f, 0.18f)) / 8f)
-                .ToRotationVector2();
-            Vector2 spawn = NPC.Center + direction * Main.rand.NextFloat(18f, 38f);
-            int index = NPC.NewNPC(NPC.GetSource_FromAI(), (int)spawn.X, (int)spawn.Y,
-                NPCID.BlueSlime);
-            if (index < 0 || index >= Main.maxNPCs) continue;
-            Main.npc[index].velocity = direction * Main.rand.NextFloat(4f, 8f) -
-                Vector2.UnitY * 4f;
-            Main.npc[index].target = NPC.target;
-            Main.npc[index].netUpdate = true;
-        }
-    }
 }

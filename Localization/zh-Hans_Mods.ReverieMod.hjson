@@ -1,3 +1,15 @@
+KingSlimeTitles: {
+	Theme: "史莱姆之梦"
+	Intro: "史莱姆王的复仇"
+	Defeated: "已打败"
+}
+
+EyeOfCthulhuTitles: {
+	Theme: "克苏鲁之眼之梦"
+	Intro: "迷幻之瞳"
+	Defeated: "已打败"
+}
+
 Items: {
 	KingSlimeCrown: {
 		DisplayName: "史莱姆王冠"
@@ -23,6 +35,8 @@ Items: {
 }
 
 NPCs: {
+	EyeOfCthulhu.DisplayName: "克苏鲁之眼"
+	CthulhusServant.DisplayName: "克苏鲁之仆"
 	KingSlime.DisplayName: "史莱姆王"
 	DreamEye.DisplayName: "旧梦之眼"
 	EyeServant.DisplayName: "眼球仆从"

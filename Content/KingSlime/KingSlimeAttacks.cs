@@ -102,25 +102,18 @@ public partial class KingSlime {
             KingSlimeMinionDamage.HitNearby(NPC.Bottom, 175f, ContactDamage(50));
         BounceStandingPlayers();
         if (Main.netMode == NetmodeID.Server) return;
-        ParticleManager.Instance?.NewParticle<GroundCrackParticle>(
+        ParticleManager.Instance.NewParticle<GroundCrackParticle>(
             NPC.Bottom + Vector2.UnitY * 10f, Vector2.Zero);
         Main.instance.CameraModifiers.Add(new PunchCameraModifier(
             NPC.Bottom, -Vector2.UnitY, 11f, 8f, 16));
-        TwistCircleParticle twist = ParticleManager.Instance?.NewParticle<TwistCircleParticle>(
-            NPC.Bottom, Vector2.Zero);
-        if (twist != null) {
-            twist.size = 10f;
-            twist.time = 35;
-            twist.strength = 0.24f;
-        }
+        TwistCircleParticle.Spawn(NPC.Bottom, 2f, 30, 0.4f);
         for (int i = 0; i < 18; i++) {
             float sideways = Main.rand.NextFloat(-NPC.width * 1.25f, NPC.width * 1.25f);
-            SmokeParticle smoke = ParticleManager.Instance?.NewParticle<SmokeParticle>(
+            SmokeParticle smoke = ParticleManager.Instance.NewParticle<SmokeParticle>(
                 NPC.Bottom + new Vector2(sideways, Main.rand.NextFloat(-6f, 3f)),
                 new Vector2(Math.Sign(sideways) * Main.rand.NextFloat(1.4f, 5.2f),
                     -Main.rand.NextFloat(1.3f, 4.2f)),
                 alpha: 0f, scale: Main.rand.NextFloat(1.15f, 2.2f) * NPC.scale);
-            if (smoke == null) continue;
             smoke.drawLayer = ParticleLayer.BeforeProjectiles;
             smoke.startOpacity = Main.rand.NextFloat(0.52f, 0.76f);
             smoke.timeLeft = smoke.maxTimeLeft = Main.rand.Next(35, 52);
@@ -163,9 +156,8 @@ public partial class KingSlime {
         float visualTime = Timer;
         if (visualTime < 60f) return;
         if (hammerParticle?.IsAlive != true) {
-            hammerParticle = ParticleManager.Instance?.NewParticle<KingSlimeHammerParticle>(
+            hammerParticle = ParticleManager.Instance.NewParticle<KingSlimeHammerParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f);
-            if (hammerParticle == null) return;
             hammerParticle.SetHolder(NPC);
         }
 
@@ -209,9 +201,8 @@ public partial class KingSlime {
             vertical += 0.45f * appliedTempo * appliedTempo * (1f - 0.78f * nearApex);
             if (vertical < 0f) apex.Y += vertical;
         }
-        WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+        WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
             apex, Vector2.Zero);
-        if (warning == null) return;
         hammerWarningCreated = true;
         StyleVerticalBodyWarning(warning);
         warning.lineRotation = MathHelper.Pi;
@@ -225,13 +216,12 @@ public partial class KingSlime {
     private void SpawnHammerSpeedLines() {
         if ((int)Timer % 2 == 0 || NPC.velocity.Y < 8f) return;
         for (int i = 0; i < 2; i++) {
-            SpeedLineParticle line = ParticleManager.Instance?.NewParticle<SpeedLineParticle>(
+            SpeedLineParticle line = ParticleManager.Instance.NewParticle<SpeedLineParticle>(
                 NPC.Center + new Vector2(Main.rand.NextFloat(-NPC.width * 0.65f,
                     NPC.width * 0.65f), Main.rand.NextFloat(-NPC.height * 0.6f,
                     NPC.height * 0.3f)),
                 new Vector2(0f, -Main.rand.NextFloat(2f, 5f)),
                 alpha: Main.rand.NextFloat(0.28f, 0.45f));
-            if (line == null) continue;
             line.color = new Color(185, 220, 255);
             line.rotation = 0f;
             line.drawScale = new Vector2(Main.rand.NextFloat(0.12f, 0.19f),
@@ -295,7 +285,7 @@ public partial class KingSlime {
                 NPC.netUpdate = true;
             }
             if (PassedTime(80f))
-                SoundEngine.PlaySound(KingSlimeSound.ItemUse, NPC.Center);
+                KingSlimeSound.PlayRush(NPC.Center);
             if (Timer > 80f && (NPC.collideX || NPC.collideY)) {
                 Timer = 106f;
                 motionMode = MotionMode.Natural;
@@ -335,12 +325,11 @@ public partial class KingSlime {
     private void SpawnUmbrellaWind() {
         if (Main.netMode == NetmodeID.Server || (int)Timer % 2 == 0) return;
         for (int i = 0; i < 2; i++) {
-            SpeedLineParticle line = ParticleManager.Instance?.NewParticle<SpeedLineParticle>(
+            SpeedLineParticle line = ParticleManager.Instance.NewParticle<SpeedLineParticle>(
                 NPC.Center + new Vector2(MoveValue * Main.rand.NextFloat(-NPC.width * 0.25f,
                     NPC.width * 0.48f), Main.rand.NextFloat(-NPC.height * 0.38f, NPC.height * 0.26f)),
                 new Vector2(-MoveValue * Main.rand.NextFloat(2f, 4f), 0f),
                 alpha: Main.rand.NextFloat(0.22f, 0.34f));
-            if (line == null) continue;
             line.color = new Color(235, 207, 220);
             line.rotation = MoveValue > 0f ? -MathHelper.PiOver2 : MathHelper.PiOver2;
             line.drawScale = new Vector2(Main.rand.NextFloat(0.1f, 0.18f),
@@ -368,9 +357,8 @@ public partial class KingSlime {
         if (Timer < 12f) return;
 
         if (umbrellaParticle?.IsAlive != true) {
-            umbrellaParticle = ParticleManager.Instance?.NewParticle<KingSlimeUmbrellaParticle>(
+            umbrellaParticle = ParticleManager.Instance.NewParticle<KingSlimeUmbrellaParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f, scale: 2f);
-            if (umbrellaParticle == null) return;
             umbrellaParticle.SetHolder(NPC);
         }
 
@@ -404,9 +392,8 @@ public partial class KingSlime {
         float direction = MoveValue == 0f
             ? (Main.player[NPC.target].Center.X >= NPC.Center.X ? 1f : -1f) : MoveValue;
         Vector2 rushStart = new(NPC.Center.X, PredictUmbrellaApexY());
-        WarningLineParticle warning = ParticleManager.Instance?.NewParticle<WarningLineParticle>(
+        WarningLineParticle warning = ParticleManager.Instance.NewParticle<WarningLineParticle>(
             rushStart + Vector2.UnitX * direction * NPC.width * 0.25f, Vector2.Zero);
-        if (warning == null) return;
         umbrellaWarningCreated = true;
         StyleBodyWarning(warning);
         warning.lineLength = 680f * umbrellaRushDistanceScale;
@@ -439,12 +426,11 @@ public partial class KingSlime {
 
     private void CreateBoomerangWarning(Vector2 origin, float angle, float musicalTicks) {
         if (Main.netMode == NetmodeID.Server) return;
-        WarningLineParticle line = ParticleManager.Instance?
+        WarningLineParticle line = ParticleManager.Instance
             .NewParticle<WarningLineParticle>(origin, Vector2.Zero);
-        if (line == null) return;
         line.lineRotation = angle + MathHelper.PiOver2;
         line.lineLength = KingSlimeBoomerang.TravelDistance;
-        line.lineWidth = 42f;
+        line.lineWidth = 46f;
         line.alpha = 0.48f;
         line.smaller = true;
         line.color = Color.White;
@@ -493,14 +479,11 @@ public partial class KingSlime {
             return;
         }
         if (boomerangParticle?.IsAlive != true) {
-            boomerangParticle = ParticleManager.Instance?.NewParticle<KingSlimePropParticle>(
+            boomerangParticle = ParticleManager.Instance.NewParticle<KingSlimePropParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.8f);
-            if (boomerangParticle != null) {
-                boomerangParticle.SetHolder(NPC);
-                boomerangParticle.propTexture = ModAsset.KingSlimeBoomerang.Value;
-            }
+            boomerangParticle.SetHolder(NPC);
+            boomerangParticle.propTexture = ModAsset.KingSlimeBoomerang.Value;
         }
-        if (boomerangParticle == null) return;
         Vector2 direction = MoveValue == 0f ? Vector2.UnitX : -Vector2.UnitX;
         float windup = GuidaUtils.Smoothstep(5f, 19f, Timer);
         boomerangParticle.position = NPC.Center + direction * (NPC.width * 0.30f - 18f * windup) -
@@ -520,17 +503,15 @@ public partial class KingSlime {
             NPC.netUpdate = true;
             if (Main.netMode != NetmodeID.Server) {
                 Vector2 direction = MoveValue.ToRotationVector2();
-                PixelWarningLineParticle line = ParticleManager.Instance?.NewParticle<PixelWarningLineParticle>(
+                PixelWarningLineParticle line = ParticleManager.Instance.NewParticle<PixelWarningLineParticle>(
                     StaffGrip(MoveValue) + direction * 30f, Vector2.Zero);
-                if (line != null) {
-                    line.rotation = MoveValue;
-                    line.lineLength = 2000f;
-                    line.lineWidth = 7f;
-                    line.opacity = 0.38f;
-                    line.color = new Color(255, 176, 102);
-                    line.timeLeft = line.maxTimeLeft =
-                        (int)Math.Ceiling(30f / appliedTempo);
-                }
+                line.rotation = MoveValue;
+                line.lineLength = 2000f;
+                line.lineWidth = 7f;
+                line.opacity = 0.38f;
+                line.color = new Color(255, 176, 102);
+                line.timeLeft = line.maxTimeLeft =
+                    (int)Math.Ceiling(30f / appliedTempo);
             }
         }
         if (PassedTime(21f)) {
@@ -551,6 +532,11 @@ public partial class KingSlime {
 
     private void SlimeStaffRain(Player target) {
         NPC.velocity.X *= grounded ? 0.70f : 0.94f;
+        if (Main.netMode != NetmodeID.MultiplayerClient && !IsEcho &&
+            NPC.life * 20 < NPC.lifeMax * 17 &&
+            (PassedTime(43f) || PassedTime(88f) ||
+                PassedTime(133f) && Main.rand.NextBool()))
+            SpawnWindyBalloon(target);
         for (int cast = 28; cast <= 148; cast += 15) {
             float warningStart = Math.Max(1f, cast - 30f);
             if (PassedTime(warningStart)) {
@@ -582,6 +568,23 @@ public partial class KingSlime {
         if (SlotFinished(180f) && grounded) AdvancePattern(target);
     }
 
+    private void SpawnWindyBalloon(Player target) {
+        int side = Main.rand.NextBool() ? 1 : -1;
+        float distance = Math.Max(1100f, Main.screenWidth * 0.5f + 120f);
+        float x = MathHelper.Clamp(target.Center.X + side * distance,
+            160f, Main.maxTilesX * 16f - 160f);
+        float y = MathHelper.Clamp(target.Center.Y - Main.rand.NextFloat(140f, 280f),
+            160f, Main.maxTilesY * 16f - 160f);
+        int index = NPC.NewNPC(NPC.GetSource_FromAI(), (int)x, (int)y,
+            NPCID.WindyBalloon);
+        if (index < 0 || index >= Main.maxNPCs) return;
+        NPC balloon = Main.npc[index];
+        balloon.velocity = new Vector2(-side * 3f, 0f);
+        balloon.direction = -side;
+        balloon.target = target.whoAmI;
+        balloon.netUpdate = true;
+    }
+
     private void ReleaseFireWand() {
         if (fireWandParticle?.IsAlive == true && fireWandParticle.held)
             fireWandParticle.Release(MoveValue.ToRotationVector2() * 3f - Vector2.UnitY * 3f);
@@ -599,44 +602,38 @@ public partial class KingSlime {
         if (CurrentMove != Move.FireWand || Timer >= 37f) ReleaseFireWand();
         else if (Timer >= 3f) {
             if (fireWandParticle?.IsAlive != true) {
-                fireWandParticle = ParticleManager.Instance?.NewParticle<KingSlimeStaffParticle>(
+                fireWandParticle = ParticleManager.Instance.NewParticle<KingSlimeStaffParticle>(
                     NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-                if (fireWandParticle != null) fireWandParticle.SetHolder(NPC);
+                fireWandParticle.SetHolder(NPC);
             }
-            if (fireWandParticle != null) {
-                float swing = -0.62f * GuidaUtils.Smoothstep(8f, 17f, Timer) +
-                    1.05f * GuidaUtils.Smoothstep(17f, 23f, Timer) -
-                    0.43f * GuidaUtils.Smoothstep(24f, 36f, Timer);
-                fireWandParticle.position = StaffGrip(MoveValue);
-                fireWandParticle.rotation = MoveValue + MathHelper.PiOver4 + swing;
-                fireWandParticle.alpha = GuidaUtils.Smoothstep(3f, 10f, Timer);
-                fireWandParticle.timeLeft = 2;
-            }
+            float swing = -0.62f * GuidaUtils.Smoothstep(8f, 17f, Timer) +
+                1.05f * GuidaUtils.Smoothstep(17f, 23f, Timer) -
+                0.43f * GuidaUtils.Smoothstep(24f, 36f, Timer);
+            fireWandParticle.position = StaffGrip(MoveValue);
+            fireWandParticle.rotation = MoveValue + MathHelper.PiOver4 + swing;
+            fireWandParticle.alpha = GuidaUtils.Smoothstep(3f, 10f, Timer);
+            fireWandParticle.timeLeft = 2;
         }
 
         if (CurrentMove != Move.SlimeStaffRain || Timer >= 158f) ReleaseSlimeStaff();
         else if (Timer >= 4f) {
             if (slimeStaffParticle?.IsAlive != true) {
-                slimeStaffParticle = ParticleManager.Instance?.NewParticle<KingSlimeStaffParticle>(
+                slimeStaffParticle = ParticleManager.Instance.NewParticle<KingSlimeStaffParticle>(
                     NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-                if (slimeStaffParticle != null) {
-                    slimeStaffParticle.summoning = true;
-                    slimeStaffParticle.SetHolder(NPC);
-                }
+                slimeStaffParticle.summoning = true;
+                slimeStaffParticle.SetHolder(NPC);
             }
-            if (slimeStaffParticle != null) {
-                float direction = NPC.direction == 0 ? 1f : NPC.direction;
-                float windup = -0.85f * GuidaUtils.Smoothstep(10f, 25f, Timer);
-                float sweep = 1.05f * (float)Math.Sin((Timer - 25f) * MathHelper.TwoPi / 24f);
-                float swing = MathHelper.Lerp(windup, sweep,
-                    GuidaUtils.Smoothstep(25f, 34f, Timer));
-                slimeStaffParticle.position = NPC.Center + new Vector2(direction * NPC.width * 0.30f,
-                    -NPC.height * 0.17f - 5f * (float)Math.Sin(Timer * 0.18f));
-                slimeStaffParticle.spriteDirection = direction > 0f ? 1 : -1;
-                slimeStaffParticle.rotation = direction * swing;
-                slimeStaffParticle.alpha = GuidaUtils.Smoothstep(4f, 12f, Timer);
-                slimeStaffParticle.timeLeft = 2;
-            }
+            float direction = NPC.direction == 0 ? 1f : NPC.direction;
+            float windup = -0.85f * GuidaUtils.Smoothstep(10f, 25f, Timer);
+            float sweep = 1.05f * (float)Math.Sin((Timer - 25f) * MathHelper.TwoPi / 24f);
+            float swing = MathHelper.Lerp(windup, sweep,
+                GuidaUtils.Smoothstep(25f, 34f, Timer));
+            slimeStaffParticle.position = NPC.Center + new Vector2(direction * NPC.width * 0.30f,
+                -NPC.height * 0.17f - 5f * (float)Math.Sin(Timer * 0.18f));
+            slimeStaffParticle.spriteDirection = direction > 0f ? 1 : -1;
+            slimeStaffParticle.rotation = direction * swing;
+            slimeStaffParticle.alpha = GuidaUtils.Smoothstep(4f, 12f, Timer);
+            slimeStaffParticle.timeLeft = 2;
         }
     }
 
@@ -650,9 +647,6 @@ public partial class KingSlime {
         return NPC.Center + ShortswordDirection() *
             (NPC.width * 0.28f - pullBack + thrust) - Vector2.UnitY * (NPC.height * 0.09f);
     }
-
-    private Vector2 ShortswordTipPosition() =>
-        ShortswordHeldPosition() + ShortswordDirection() * 34f;
 
     private void ShortswordThrust(Player target) {
         if (Timer < 12f) {
@@ -670,7 +664,7 @@ public partial class KingSlime {
         if (Timer < 32f) {
             motionMode = MotionMode.Rush;
             if (PassedTime(12f)) {
-                SoundEngine.PlaySound(KingSlimeSound.ItemUse, NPC.Center);
+                KingSlimeSound.PlayRush(NPC.Center);
                 NPC.netUpdate = true;
             }
             float progress = MathHelper.Clamp((Timer - 12f) / 20f, 0f, 1f);
@@ -699,9 +693,8 @@ public partial class KingSlime {
         }
         if (Timer < 4f) return;
         if (shortswordParticle?.IsAlive != true) {
-            shortswordParticle = ParticleManager.Instance?.NewParticle<KingSlimeCopperShortswordParticle>(
+            shortswordParticle = ParticleManager.Instance.NewParticle<KingSlimeCopperShortswordParticle>(
                 NPC.Center, Vector2.Zero, alpha: 0f, scale: 2.5f);
-            if (shortswordParticle == null) return;
             shortswordParticle.SetHolder(NPC);
         }
         shortswordParticle.position = ShortswordHeldPosition();

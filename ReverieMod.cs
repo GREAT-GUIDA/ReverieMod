@@ -1,15 +1,20 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using GuidaSharedCode;
+using Microsoft.Xna.Framework;
+using Terraria;
 using Terraria.ModLoader;
 
-namespace ReverieMod
-{
-	// Please read https://github.com/tModLoader/tModLoader/wiki/Basic-tModLoader-Modding-Guide#mod-skeleton-contents for more information about the various files in a mod.
-	public class ReverieMod : Mod
-	{
+namespace ReverieMod {
+    public class ReverieMod : Mod {
+    }
 
-	}
+    public class TwistCircleTestPlayer : ModPlayer {
+        public override void PostUpdate() {
+            if (Player.whoAmI != Main.myPlayer || Main.gameMenu || Main.gamePaused ||
+                !Main.hasFocus || Main.playerInventory || Main.mapFullscreen ||
+                Player.mouseInterface || !Main.mouseLeft || !Main.mouseLeftRelease)
+                return;
+
+            //TwistCircleParticle.Spawn(Main.MouseWorld, 2, 60, 0.5f, style: TwistCircleStyle.Circle);
+        }
+    }
 }

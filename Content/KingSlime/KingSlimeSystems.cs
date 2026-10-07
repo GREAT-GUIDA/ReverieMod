@@ -9,7 +9,6 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace ReverieMod.Content.KingSlime;
 
-
 // The summoned slime falls under this AI until landing, then resumes ordinary slime AI.
 public class KingSlimeFallingSlimeGlobalNPC : GlobalNPC {
     public override bool InstancePerEntity => true;
@@ -66,7 +65,6 @@ public class KingSlimeFallingSlimeGlobalNPC : GlobalNPC {
         return false;
     }
 }
-
 
 internal static class KingSlimeMinionDamage {
     internal static void HitNearby(Vector2 center, float radius, int damage) {
