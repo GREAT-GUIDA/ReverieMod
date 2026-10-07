@@ -246,7 +246,6 @@ public partial class KingSlime {
         }
     }
 
-    private float difficultyDamageMult = 1f;
     private float fightElapsedTicks;
     private float damageBeforeReduction;
     private float currentDamageReduction;
@@ -305,13 +304,10 @@ public partial class KingSlime {
 
     public override void ApplyDifficultyAndPlayerScaling(int numPlayers, float balance, float bossAdjustment) {
         if (Main.masterMode) {
-            difficultyDamageMult = 1.5f * 1.5f;
             NPC.lifeMax = (int)Math.Round(2400f * 1.5f * 1.25f * balance);
         } else if (Main.expertMode) {
-            difficultyDamageMult = 1.5f;
             NPC.lifeMax = (int)Math.Round(2400f * 1.5f * balance);
         } else {
-            difficultyDamageMult = 1f;
             NPC.lifeMax = (int)Math.Round(2400f * balance);
         }
 
@@ -319,5 +315,6 @@ public partial class KingSlime {
     }
 
     private int ContactDamage(int normalAmount) =>
-        (int)Math.Round(normalAmount * difficultyDamageMult);
+        (int)Math.Round(normalAmount * (Main.masterMode ? 2.25f :
+            Main.expertMode ? 1.5f : 1f));
 }

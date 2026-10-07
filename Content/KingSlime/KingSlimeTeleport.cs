@@ -133,7 +133,6 @@ public partial class KingSlime {
         }
     }
 
-    private bool teleportChainDecided;
     private bool teleportChainReady;
     private bool teleportChainPreviewCreated;
     private bool chainedTeleportAction;
@@ -148,8 +147,7 @@ public partial class KingSlime {
 
     private void PrepareTeleportChain(Player target) {
         if (tempoStage == 0 || IsEcho || !IsTeleportAttack || Timer < 90f) return;
-        if (Main.netMode != NetmodeID.MultiplayerClient && !teleportChainDecided) {
-            teleportChainDecided = true;
+        if (Main.netMode != NetmodeID.MultiplayerClient && PassedTime(90f)) {
             float chainChance = ultimateUsed
                 ? MathHelper.Lerp(0.5f, 0.8f, MathHelper.Clamp(
                     (0.20f - NPC.life / (float)NPC.lifeMax) / 0.15f, 0f, 1f))
@@ -275,6 +273,7 @@ public partial class KingSlime {
     private void WriteTeleportChain(BinaryWriter writer) {
         writer.Write(teleportChainReady);
         writer.Write(chainedTeleportAction);
+        if (!teleportChainReady) return;
         writer.Write((byte)teleportChainMove);
         writer.Write(teleportChainDestination.X);
         writer.Write(teleportChainDestination.Y);
@@ -286,7 +285,7 @@ public partial class KingSlime {
         bool previewed = teleportChainPreviewCreated;
         teleportChainReady = active && reader.ReadBoolean();
         chainedTeleportAction = active && reader.ReadBoolean();
-        if (active) {
+        if (teleportChainReady) {
             teleportChainMove = (Move)reader.ReadByte();
             teleportChainDestination = new Vector2(reader.ReadSingle(), reader.ReadSingle());
             teleportChainDirection = reader.ReadSingle();

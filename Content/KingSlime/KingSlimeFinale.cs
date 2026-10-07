@@ -476,14 +476,13 @@ public partial class KingSlime {
     }
 
     private bool dying;
-    private bool deathFinished;
     private float deathTimer;
     private bool deathBurstCreated;
     private bool deathMusicStopped;
     private bool deathOpeningShockCreated;
 
     public override bool CheckDead() {
-        if (IsEcho || deathFinished) return true;
+        if (IsEcho || deathTimer >= 142f) return true;
         dying = true;
         StopDeathMusic();
         CreateDeathOpeningShock();
@@ -576,7 +575,6 @@ public partial class KingSlime {
             CreateDeathBurst();
         }
         if (deathTimer < 142f || Main.netMode == NetmodeID.MultiplayerClient) return;
-        deathFinished = true;
         NPC.life = 0;
         NPC.netUpdate = true;
         NPC.checkDead();

@@ -48,16 +48,16 @@ public partial class KingSlime {
         (!lastPotionUseTick.HasValue ||
             unchecked(Main.GameUpdateCount - lastPotionUseTick.Value) >= 3600u);
 
-    private bool CanUseShortsword(Player target) =>
-        Vector2.DistanceSquared(NPC.Center, target.Center) <= 200f * 200f;
-
-    private bool CanUseFireWand(Player target) =>
-        Vector2.DistanceSquared(NPC.Center, target.Center) > 200f * 200f;
-
-    private bool CanUseBoomerang(Player target) {
-        float distance = Vector2.DistanceSquared(NPC.Center, target.Center);
-        return distance > 300f * 300f && distance < 900f * 900f &&
-            Math.Abs(NPC.Center.Y - target.Center.Y) < 120f;
+    private void AddHalfMeasureChoices(List<Move> pool, Player target,
+        bool allowAttacks = true) {
+        if (allowAttacks) {
+            float distance = Vector2.DistanceSquared(NPC.Center, target.Center);
+            pool.Add(distance > 200f * 200f ? Move.FireWand : Move.ShortswordThrust);
+            if (distance > 300f * 300f && distance < 900f * 900f &&
+                Math.Abs(NPC.Center.Y - target.Center.Y) < 120f)
+                pool.Add(Move.Boomerang);
+        }
+        if (CanDrinkPotion()) pool.Add(Move.DrinkPotion);
     }
 
     private static bool IsSplitExclusiveMove(Move move) => move is
@@ -234,10 +234,7 @@ public partial class KingSlime {
                 ref usedTwoMeasureMoves);
         if (patternKind == 3 && patternStep == 2) {
             List<Move> pool = new();
-            if (CanUseFireWand(target)) pool.Add(Move.FireWand);
-            if (CanUseShortsword(target)) pool.Add(Move.ShortswordThrust);
-            if (CanUseBoomerang(target)) pool.Add(Move.Boomerang);
-            if (CanDrinkPotion()) pool.Add(Move.DrinkPotion);
+            AddHalfMeasureChoices(pool, target);
             return ChooseUnseen(pool.ToArray(), ref usedHalfMeasureMoves);
         }
         if (IsEcho || splitTimer >= 90f) {
@@ -296,12 +293,7 @@ public partial class KingSlime {
             if (!far) pool.AddRange(new[] { Move.RopeGrenades, Move.SlimeStaffRain });
         }
         else if (halfMeasure) {
-            if (!far) {
-                if (CanUseFireWand(target)) pool.Add(Move.FireWand);
-                if (CanUseShortsword(target)) pool.Add(Move.ShortswordThrust);
-                if (CanUseBoomerang(target)) pool.Add(Move.Boomerang);
-            }
-            if (CanDrinkPotion()) pool.Add(Move.DrinkPotion);
+            AddHalfMeasureChoices(pool, target, !far);
         }
         else {
             // Phase two always uses the teleporting version of the fan.

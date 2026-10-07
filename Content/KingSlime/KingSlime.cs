@@ -108,8 +108,6 @@ public partial class KingSlime : ModNPC {
         _ => 1f
     };
 
-    private float HealthProgress() => MathHelper.Clamp(1f - NPC.life / (float)Math.Max(1, NPC.lifeMax), 0f, 1f);
-
     private bool PassedTime(float time) => previousTimer < time && Timer >= time;
 
     public override string Texture => ModAsset.KingSlimeBody_Mod;
@@ -336,7 +334,8 @@ public partial class KingSlime : ModNPC {
 
         // Keep the collision box and the drawing scale together as the slime loses mass.
         // Its feet and horizontal center stay in place while the box contracts.
-        float size = 1.035f - HealthProgress() * 0.315f;
+        float size = 1.035f - MathHelper.Clamp(
+            1f - NPC.life / (float)Math.Max(1, NPC.lifeMax), 0f, 1f) * 0.315f;
         if (IsEcho) {
             float birth = GuidaUtils.Smoothstep(0f, 23f, NPC.localAI[3]);
             float merge = owner.splitMergeStart >= 0f
@@ -800,10 +799,9 @@ public partial class KingSlime : ModNPC {
 
     private bool WantsLowerPlatform() => CanFallThroughPlatforms() == true;
 
-    private bool HasSolidSupport() => Collision.SolidCollision(
-        new Vector2(NPC.position.X + 3f, NPC.Bottom.Y + 1f), NPC.width - 6, 5);
-
-    private bool DroppingThroughPlatform() => WantsLowerPlatform() && !HasSolidSupport();
+    private bool DroppingThroughPlatform() => WantsLowerPlatform() &&
+        !Collision.SolidCollision(new Vector2(NPC.position.X + 3f, NPC.Bottom.Y + 1f),
+            NPC.width - 6, 5);
 
     private bool LandedFromAir() => NPC.localAI[0] == 1 && grounded &&
         (NPC.oldVelocity.Y > 1.2f || NPC.localAI[1] >= 4);
@@ -1349,7 +1347,6 @@ public partial class KingSlime : ModNPC {
         if (twin.ModNPC is KingSlime echo) {
             echo.tempoStage = tempoStage;
             echo.appliedTempo = appliedTempo;
-            echo.difficultyDamageMult = difficultyDamageMult;
             echo.lastOwnerActionSerial = actionSerial;
             echo.measureTicks = measureTicks;
         }
@@ -2105,7 +2102,6 @@ public partial class KingSlime : ModNPC {
         umbrellaWarningCreated = false;
         ultimateWarningMask = 0;
         ultimateLeg = -1;
-        teleportChainDecided = false;
         teleportChainReady = false;
         teleportChainPreviewCreated = false;
         chainedTeleportAction = false;

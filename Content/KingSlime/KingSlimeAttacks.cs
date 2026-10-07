@@ -18,7 +18,7 @@ public partial class KingSlime {
             if (PassedTime(12f)) {
                 float dx = target.Center.X + target.velocity.X * 5f - NPC.Center.X;
                 float horizontal = MathHelper.Clamp(dx / 36f, -11.2f, 11.2f);
-                LaunchJump(horizontal, HammerJumpSpeed(target), heavy: true);
+                LaunchJump(horizontal, HammerJumpSpeed(NPC.Center.Y, target), heavy: true);
             }
             return;
         }
@@ -80,13 +80,12 @@ public partial class KingSlime {
             AdvancePattern(target);
     }
 
-    private float HammerJumpSpeed(Player target) => 18.1f + MathHelper.Clamp(
-        (NPC.Center.Y - target.Top.Y - 70f) * 0.015f, 0f, 3.5f);
+    private float HammerJumpSpeed(float startY, Player target) => 18.1f +
+        MathHelper.Clamp((startY - target.Top.Y - 70f) * 0.015f, 0f, 3.5f);
 
     private float PredictHammerRise(Player target, Vector2? origin = null) {
         float startY = (origin ?? NPC.Center).Y;
-        float speed = 18.1f + MathHelper.Clamp(
-            (startY - target.Top.Y - 70f) * 0.015f, 0f, 3.5f);
+        float speed = HammerJumpSpeed(startY, target);
         float vertical = JumpImpulse(speed);
         float rise = 0f;
         for (int i = 0; i < 90 && vertical < 0f; i++) {
